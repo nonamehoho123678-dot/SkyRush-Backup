@@ -2,11 +2,9 @@ const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs = require('fs-extra');
 const path = require('path');
 const config = require('../config.json');
+const { handle, handleModal } = require('./handlers/panelHandler');
 
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
-});
-
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 client.commands = new Collection();
 
 const commandsPath = path.join(__dirname, 'commands');
@@ -17,20 +15,23 @@ if (fs.existsSync(commandsPath)) {
   }
 }
 
-client.once('clientReady', readyClient => {
-  console.log(`✅ ${readyClient.user.tag} is online!`);
-});
+client.once('clientReady', readyClient => console.log(`✅ ${readyClient.user.tag} is online!`));
 
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-
   try {
-    await command.execute(interaction, client);
+    if (interaction.isChatInputCommand()) {
+      const command = client.commands.get(interaction.commandName);
+      if (command) await command.execute(interaction, client);
+      return;
+    }
+    if (interaction.isButton() || interaction.isAnySelectMenu()) {
+      await handle(interaction);
+      return;
+    }
+    if (interaction.isModalSubmit()) await handleModal(interaction);
   } catch (error) {
     console.error(error);
-    const message = { content: '❌ Đã xảy ra lỗi khi thực hiện lệnh.', ephemeral: true };
+    const message = { content: '❌ Đã xảy ra lỗi khi thực hiện thao tác.', ephemeral: true };
     if (interaction.replied || interaction.deferred) await interaction.followUp(message);
     else await interaction.reply(message);
   }
