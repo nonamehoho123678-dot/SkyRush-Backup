@@ -1,0 +1,1 @@
+Panel interaction handler is implemented in src/panelHandler.js. Wire handlePanelInteraction(interaction) into interactionCreate before slash-command dispatch.
