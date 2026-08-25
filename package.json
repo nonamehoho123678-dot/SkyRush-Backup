@@ -1,0 +1,20 @@
+{
+  "name": "skyrush-backup",
+  "version": "2.0.0",
+  "description": "Discord backup bot for SkyRush",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "discord.js": "^14.26.5",
+    "express": "^5.1.0",
+    "fs-extra": "^11.3.1",
+    "node-cron": "^4.2.1",
+    "sqlite3": "^5.1.7"
+  }
+}
