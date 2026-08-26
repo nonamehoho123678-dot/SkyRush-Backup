@@ -3,9 +3,10 @@ const fs = require('fs-extra');
 
 async function restoreBackup(guild, backup) {
   const roleMap = new Map();
+  const categoryMap = new Map();
   const channelMap = new Map();
 
-  // Roles: create first, then apply their saved order.
+  // Roles first. @everyone is never recreated.
   const roles = [...(backup.roles || [])].sort((a, b) => a.position - b.position);
   for (const data of roles) {
     let role = guild.roles.cache.find(r => r.name === data.name);
@@ -22,65 +23,67 @@ async function restoreBackup(guild, backup) {
     roleMap.set(data.id, role);
   }
 
-  // Categories must exist before their child channels.
-  const channels = [...(backup.channels || [])];
-  const categories = channels
-    .filter(c => c.type === ChannelType.GuildCategory)
-    .sort((a, b) => a.position - b.position);
-
+  // Categories are created first and mapped by backup ID.
+  const categories = [...(backup.categories || [])].sort((a, b) => a.order - b.order);
   for (const data of categories) {
-    let channel = guild.channels.cache.find(c => c.name === data.name && c.type === ChannelType.GuildCategory);
-    if (!channel) {
-      channel = await guild.channels.create({ name: data.name, type: ChannelType.GuildCategory });
+    let category = guild.channels.cache.find(c => c.type === ChannelType.GuildCategory && c.name === data.name);
+    if (!category) {
+      category = await guild.channels.create({ name: data.name, type: ChannelType.GuildCategory });
     }
-    channelMap.set(data.id, channel);
+    categoryMap.set(data.id, category);
+    channelMap.set(data.id, category);
   }
 
-  // Create non-category channels while preserving parent relationships.
-  const children = channels
-    .filter(c => c.type !== ChannelType.GuildCategory)
-    .sort((a, b) => a.position - b.position);
-
-  for (const data of children) {
-    let channel = guild.channels.cache.find(c => c.name === data.name && c.type === data.type);
-    const parent = data.parentId ? channelMap.get(data.parentId) : null;
+  // Create channels and attach them to the correct category before positioning.
+  const channels = [...(backup.channels || [])];
+  for (const data of channels) {
+    const parent = data.parentId ? categoryMap.get(data.parentId) : null;
+    let channel = guild.channels.cache.find(c => c.type === data.type && c.name === data.name && (c.parentId || null) === (parent?.id || null));
 
     if (!channel) {
-      const options = {
+      channel = await guild.channels.create({
         name: data.name,
         type: data.type,
         parent: parent?.id,
         topic: data.topic ?? undefined,
-        nsfw: data.nsfw ?? false
-      };
-      channel = await guild.channels.create(options);
-    } else if (parent && channel.parentId !== parent.id) {
-      await channel.setParent(parent.id, { lockPermissions: false });
+        nsfw: data.nsfw ?? false,
+        rateLimitPerUser: data.rateLimitPerUser ?? 0
+      });
+    } else if ((channel.parentId || null) !== (parent?.id || null)) {
+      await channel.setParent(parent?.id || null, { lockPermissions: false });
     }
 
     channelMap.set(data.id, channel);
   }
 
-  // Discord calculates positions after creation/parent changes, so positions are applied last.
-  const grouped = new Map();
+  // Category order: apply globally, after every category exists.
+  const categoryPositions = categories
+    .map(data => ({ channel: categoryMap.get(data.id)?.id, position: data.order }))
+    .filter(x => x.channel);
+  if (categoryPositions.length) await guild.channels.setPositions(categoryPositions);
+
+  // Channel order is relative to each parent. Discord recalculates positions after moving a channel,
+  // so process each group from highest saved position to lowest.
+  const groups = new Map();
   for (const data of channels) {
-    const channel = channelMap.get(data.id);
-    if (!channel) continue;
-    const key = data.parentId || 'root';
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key).push({ channel, position: data.position });
+    const key = data.parentId || '__ROOT__';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(data);
   }
 
-  for (const entries of grouped.values()) {
-    entries.sort((a, b) => a.position - b.position);
-    const positions = entries.map((entry, index) => ({
-      channel: entry.channel.id,
-      position: index
-    }));
+  for (const group of groups.values()) {
+    group.sort((a, b) => a.position - b.position);
+    const positions = group
+      .map((data, index) => ({ channel: channelMap.get(data.id)?.id, position: index }))
+      .filter(x => x.channel);
     if (positions.length) await guild.channels.setPositions(positions);
   }
 
-  return { roles: roleMap.size, channels: channelMap.size };
+  return {
+    roles: roleMap.size,
+    categories: categoryMap.size,
+    channels: channelMap.size - categoryMap.size
+  };
 }
 
 async function restoreFromFile(guild, filePath) {
