@@ -7,6 +7,15 @@ const { createBackupId } = require('./backupID');
 const backupRoot = path.join(__dirname, '../../backups');
 fs.ensureDirSync(backupRoot);
 
+function serializeOverwrites(channel) {
+  return [...channel.permissionOverwrites.cache.values()].map(overwrite => ({
+    id: overwrite.id,
+    type: overwrite.type,
+    allow: overwrite.allow.bitfield.toString(),
+    deny: overwrite.deny.bitfield.toString()
+  }));
+}
+
 async function createBackup(guild, user, prefix = 'SR') {
   const id = await createBackupId(prefix);
   const dir = path.join(backupRoot, id);
@@ -15,7 +24,13 @@ async function createBackup(guild, user, prefix = 'SR') {
   const categories = [...guild.channels.cache.values()]
     .filter(c => c.type === ChannelType.GuildCategory)
     .sort((a, b) => a.position - b.position)
-    .map((c, order) => ({ id: c.id, name: c.name, position: c.position, order }));
+    .map((c, order) => ({
+      id: c.id,
+      name: c.name,
+      position: c.position,
+      order,
+      permissionOverwrites: serializeOverwrites(c)
+    }));
 
   const channels = [...guild.channels.cache.values()]
     .filter(c => c.type !== ChannelType.GuildCategory)
@@ -27,7 +42,8 @@ async function createBackup(guild, user, prefix = 'SR') {
       position: c.position,
       topic: 'topic' in c ? c.topic : null,
       nsfw: 'nsfw' in c ? c.nsfw : false,
-      rateLimitPerUser: 'rateLimitPerUser' in c ? c.rateLimitPerUser : 0
+      rateLimitPerUser: 'rateLimitPerUser' in c ? c.rateLimitPerUser : 0,
+      permissionOverwrites: serializeOverwrites(c)
     }));
 
   const roles = [...guild.roles.cache.values()]
@@ -45,7 +61,7 @@ async function createBackup(guild, user, prefix = 'SR') {
     }));
 
   const data = {
-    formatVersion: 2,
+    formatVersion: 3,
     id,
     guild: { id: guild.id, name: guild.name, ownerId: guild.ownerId, iconURL: guild.iconURL() },
     categories,
