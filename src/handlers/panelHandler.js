@@ -11,7 +11,8 @@ const {
   TextInputStyle
 } = require('discord.js');
 const { get, run } = require('../utils/database');
-const { createBackup, listBackups, deleteBackup } = require('../utils/backupManager');
+const { createBackup, listBackups, deleteBackup, getBackup, pruneBackups } = require('../utils/backupManager');
+const { restoreFromFile } = require('../utils/restore');
 
 async function settings(guildId) {
   await run(`INSERT OR IGNORE INTO settings (guild_id) VALUES (?)`, [guildId]);
@@ -36,16 +37,12 @@ function menu() {
     .setCustomId('sr_panel_menu').setPlaceholder('⚙️ Chọn nhóm cài đặt...')
     .addOptions(
       { label: 'Backup', description: 'Tạo, xem và xóa backup', value: 'backup', emoji: '💾' },
+      { label: 'Restore', description: 'Khôi phục server từ backup', value: 'restore', emoji: '♻️' },
       { label: 'Auto Backup', description: 'Bật/tắt và chỉnh chu kỳ', value: 'auto', emoji: '🔄' },
       { label: 'Giới hạn Backup', description: 'Chỉnh số backup tối đa', value: 'limit', emoji: '📦' },
       { label: 'Kênh Logs', description: 'Chọn kênh nhận nhật ký', value: 'logs', emoji: '📜' },
       { label: 'Thông tin', description: 'Xem trạng thái hệ thống', value: 'info', emoji: 'ℹ️' }
     ));
-}
-
-async function refresh(interaction) {
-  const s = await settings(interaction.guildId);
-  await interaction.update({ embeds: [home(interaction.guild, s)], components: [menu(), buttons()] });
 }
 
 function buttons() {
@@ -54,6 +51,34 @@ function buttons() {
     new ButtonBuilder().setCustomId('sr_backup_list').setLabel('Danh sách').setEmoji('📋').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('sr_backup_info').setLabel('Trạng thái').setEmoji('📊').setStyle(ButtonStyle.Secondary)
   );
+}
+
+async function refresh(interaction) {
+  const s = await settings(interaction.guildId);
+  await interaction.update({ embeds: [home(interaction.guild, s)], components: [menu(), buttons()] });
+}
+
+async function showBackupSelect(interaction, customId, placeholder, title) {
+  const rows = await listBackups(interaction.guildId);
+  if (!rows.length) {
+    await interaction.reply({ content: '❌ Chưa có backup nào.', ephemeral: true });
+    return true;
+  }
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(customId)
+    .setPlaceholder(placeholder)
+    .addOptions(rows.slice(0, 25).map(x => ({
+      label: x.id,
+      description: `${x.guild_name} • ${new Date(x.created_at).toLocaleString('vi-VN')}`.slice(0, 100),
+      value: x.id
+    })));
+  await interaction.update({
+    embeds: [new EmbedBuilder().setTitle(title).setDescription('Chọn một backup bên dưới.')],
+    components: [menu(), new ActionRowBuilder().addComponents(select), new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('sr_panel_home').setLabel('Trang chính').setStyle(ButtonStyle.Secondary)
+    )]
+  });
+  return true;
 }
 
 async function handle(interaction) {
@@ -70,11 +95,23 @@ async function handle(interaction) {
     const value = interaction.values[0];
     if (value === 'backup') {
       const rows = await listBackups(interaction.guildId);
-      const text = rows.length ? rows.slice(0, 10).map(x => `• \`${x.id}\` — <t:${Math.floor(new Date(x.created_at).getTime()/1000)}:R>`).join('\n') : 'Chưa có backup.';
-      await interaction.update({ embeds: [new EmbedBuilder().setTitle('💾 Backup').setDescription(text)], components: [menu(), new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('sr_backup_create').setLabel('Tạo Backup').setEmoji('💾').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('sr_backup_delete').setLabel('Xóa Backup').setEmoji('🗑️').setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId('sr_panel_home').setLabel('Trang chính').setStyle(ButtonStyle.Secondary))] });
+      const text = rows.length ? rows.slice(0, 10).map(x => `• \`${x.id}\` — <t:${Math.floor(new Date(x.created_at).getTime() / 1000)}:R>`).join('\n') : 'Chưa có backup.';
+      await interaction.update({
+        embeds: [new EmbedBuilder().setTitle('💾 Backup').setDescription(text)],
+        components: [menu(), new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('sr_backup_create').setLabel('Tạo Backup').setEmoji('💾').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId('sr_backup_delete').setLabel('Xóa Backup').setEmoji('🗑️').setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId('sr_panel_home').setLabel('Trang chính').setStyle(ButtonStyle.Secondary)
+        )]
+      });
+    } else if (value === 'restore') {
+      return showBackupSelect(interaction, 'sr_restore_select', 'Chọn backup để khôi phục', '♻️ Restore Backup');
     } else if (value === 'auto') {
       const s = await settings(interaction.guildId);
-      await interaction.update({ embeds: [new EmbedBuilder().setTitle('🔄 Auto Backup').setDescription(`Trạng thái: **${s.auto_backup ? 'Bật' : 'Tắt'}**\nChu kỳ hiện tại: **${s.interval_minutes} phút**`)], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('sr_auto_toggle').setLabel(s.auto_backup ? 'Tắt Auto Backup' : 'Bật Auto Backup').setStyle(s.auto_backup ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('sr_auto_interval').setLabel('Đổi chu kỳ').setStyle(ButtonStyle.Primary)), new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('sr_panel_home').setLabel('Trang chính').setStyle(ButtonStyle.Secondary))] });
+      await interaction.update({ embeds: [new EmbedBuilder().setTitle('🔄 Auto Backup').setDescription(`Trạng thái: **${s.auto_backup ? 'Bật' : 'Tắt'}**\nChu kỳ hiện tại: **${s.interval_minutes} phút**`)], components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('sr_auto_toggle').setLabel(s.auto_backup ? 'Tắt Auto Backup' : 'Bật Auto Backup').setStyle(s.auto_backup ? ButtonStyle.Danger : ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('sr_auto_interval').setLabel('Đổi chu kỳ').setStyle(ButtonStyle.Primary)
+      ), new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('sr_panel_home').setLabel('Trang chính').setStyle(ButtonStyle.Secondary))] });
     } else if (value === 'limit') {
       const modal = new ModalBuilder().setCustomId('sr_limit_modal').setTitle('📦 Giới hạn Backup');
       modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('max').setLabel('Số backup tối đa (1–100)').setStyle(TextInputStyle.Short).setRequired(true).setValue(String((await settings(interaction.guildId)).max_backups))));
@@ -90,52 +127,119 @@ async function handle(interaction) {
   }
 
   if (id === 'sr_panel_home') return refresh(interaction);
+
   if (id === 'sr_backup_info') {
-    const s = await settings(interaction.guildId); const rows = await listBackups(interaction.guildId);
-    await interaction.reply({ embeds: [new EmbedBuilder().setTitle('📊 Trạng thái').setDescription(`Có **${rows.length}** backup.\nAuto Backup: **${s.auto_backup ? 'Bật' : 'Tắt'}**`)], ephemeral: true }); return true;
+    const s = await settings(interaction.guildId);
+    const rows = await listBackups(interaction.guildId);
+    await interaction.reply({ embeds: [new EmbedBuilder().setTitle('📊 Trạng thái').setDescription(`Có **${rows.length}** backup.\nAuto Backup: **${s.auto_backup ? 'Bật' : 'Tắt'}**`)], ephemeral: true });
+    return true;
   }
+
   if (id === 'sr_backup_create') {
     await interaction.deferUpdate();
     const data = await createBackup(interaction.guild, interaction.user);
     const s = await settings(interaction.guildId);
-    const { pruneBackups } = require('../utils/backupManager');
     await pruneBackups(interaction.guildId, s.max_backups);
     await interaction.editReply({ embeds: [home(interaction.guild, s), new EmbedBuilder().setDescription(`✅ Đã tạo backup **${data.id}**.`)], components: [menu(), buttons()] });
     return true;
   }
+
   if (id === 'sr_backup_list') {
     const rows = await listBackups(interaction.guildId);
-    await interaction.reply({ embeds: [new EmbedBuilder().setTitle('📋 Danh sách Backup').setDescription(rows.length ? rows.slice(0, 20).map(x => `• \`${x.id}\``).join('\n') : 'Chưa có backup.')], ephemeral: true }); return true;
+    await interaction.reply({ embeds: [new EmbedBuilder().setTitle('📋 Danh sách Backup').setDescription(rows.length ? rows.slice(0, 20).map(x => `• \`${x.id}\``).join('\n') : 'Chưa có backup.')], ephemeral: true });
+    return true;
   }
+
+  if (id === 'sr_restore_select') {
+    const backupId = interaction.values[0];
+    const backup = await getBackup(backupId, interaction.guildId);
+    if (!backup) {
+      await interaction.reply({ content: '❌ Không tìm thấy backup này.', ephemeral: true });
+      return true;
+    }
+    await interaction.update({
+      embeds: [new EmbedBuilder().setTitle('⚠️ Xác nhận Restore').setDescription(`Bạn sắp khôi phục **${backup.id}** vào server **${interaction.guild.name}**.\n\nHệ thống sẽ tạo/khớp Role, Category và Channel rồi sắp xếp lại vị trí.\n\n**Hãy chắc chắn backup này đúng server trước khi tiếp tục.**`)],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`sr_restore_confirm:${backup.id}`).setLabel('Xác nhận Restore').setEmoji('♻️').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('sr_panel_home').setLabel('Hủy').setStyle(ButtonStyle.Secondary)
+      )]
+    });
+    return true;
+  }
+
+  if (id.startsWith('sr_restore_confirm:')) {
+    const backupId = id.slice('sr_restore_confirm:'.length);
+    const backup = await getBackup(backupId, interaction.guildId);
+    if (!backup) {
+      await interaction.reply({ content: '❌ Backup không còn tồn tại.', ephemeral: true });
+      return true;
+    }
+    await interaction.deferUpdate();
+    const result = await restoreFromFile(interaction.guild, backup.file_path);
+    const s = await settings(interaction.guildId);
+    await interaction.editReply({
+      embeds: [home(interaction.guild, s), new EmbedBuilder().setTitle('✅ Restore hoàn tất').setDescription(`Backup: **${backup.id}**\n🛡️ Role: **${result.roles}**\n📁 Category/Channel: **${result.channels}**\n\nThứ tự đã được áp dụng sau khi tạo channel.`)],
+      components: [menu(), buttons()]
+    });
+    return true;
+  }
+
   if (id === 'sr_auto_toggle') {
-    const s = await settings(interaction.guildId); await run(`UPDATE settings SET auto_backup = ? WHERE guild_id = ?`, [s.auto_backup ? 0 : 1, interaction.guildId]); return refresh(interaction);
+    const s = await settings(interaction.guildId);
+    await run(`UPDATE settings SET auto_backup = ? WHERE guild_id = ?`, [s.auto_backup ? 0 : 1, interaction.guildId]);
+    return refresh(interaction);
   }
+
   if (id === 'sr_auto_interval') {
     const modal = new ModalBuilder().setCustomId('sr_interval_modal').setTitle('⏱️ Chu kỳ Auto Backup');
     modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('minutes').setLabel('Số phút (5–10080)').setStyle(TextInputStyle.Short).setRequired(true).setValue(String((await settings(interaction.guildId)).interval_minutes))));
-    await interaction.showModal(modal); return true;
+    await interaction.showModal(modal);
+    return true;
   }
-  if (id === 'sr_logs_channel') { await run(`UPDATE settings SET log_channel_id = ? WHERE guild_id = ?`, [interaction.values[0], interaction.guildId]); return refresh(interaction); }
-  if (id === 'sr_logs_clear') { await run(`UPDATE settings SET log_channel_id = NULL WHERE guild_id = ?`, [interaction.guildId]); return refresh(interaction); }
+
+  if (id === 'sr_logs_channel') {
+    await run(`UPDATE settings SET log_channel_id = ? WHERE guild_id = ?`, [interaction.values[0], interaction.guildId]);
+    return refresh(interaction);
+  }
+
+  if (id === 'sr_logs_clear') {
+    await run(`UPDATE settings SET log_channel_id = NULL WHERE guild_id = ?`, [interaction.guildId]);
+    return refresh(interaction);
+  }
+
   if (id === 'sr_backup_delete') {
-    const rows = await listBackups(interaction.guildId);
-    if (!rows.length) { await interaction.reply({ content: '❌ Chưa có backup để xóa.', ephemeral: true }); return true; }
-    const select = new StringSelectMenuBuilder().setCustomId('sr_delete_select').setPlaceholder('Chọn backup cần xóa').addOptions(rows.slice(0, 25).map(x => ({ label: x.id, value: x.id })));
-    await interaction.update({ components: [menu(), new ActionRowBuilder().addComponents(select), new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('sr_panel_home').setLabel('Trang chính').setStyle(ButtonStyle.Secondary))] }); return true;
+    return showBackupSelect(interaction, 'sr_delete_select', 'Chọn backup cần xóa', '🗑️ Xóa Backup');
   }
-  if (id === 'sr_delete_select') { await deleteBackup(interaction.values[0], interaction.guildId); return refresh(interaction); }
+
+  if (id === 'sr_delete_select') {
+    await deleteBackup(interaction.values[0], interaction.guildId);
+    return refresh(interaction);
+  }
+
   return false;
 }
 
 async function handleModal(interaction) {
   if (!interaction.customId.startsWith('sr_')) return false;
   if (interaction.customId === 'sr_limit_modal') {
-    const n = Number(interaction.fields.getTextInputValue('max')); if (!Number.isInteger(n) || n < 1 || n > 100) { await interaction.reply({ content: '❌ Nhập số từ 1 đến 100.', ephemeral: true }); return true; }
-    await run(`UPDATE settings SET max_backups = ? WHERE guild_id = ?`, [n, interaction.guildId]); await interaction.reply({ content: `✅ Đã đặt giới hạn **${n}** backup.`, ephemeral: true }); return true;
+    const n = Number(interaction.fields.getTextInputValue('max'));
+    if (!Number.isInteger(n) || n < 1 || n > 100) {
+      await interaction.reply({ content: '❌ Nhập số từ 1 đến 100.', ephemeral: true });
+      return true;
+    }
+    await run(`UPDATE settings SET max_backups = ? WHERE guild_id = ?`, [n, interaction.guildId]);
+    await interaction.reply({ content: `✅ Đã đặt giới hạn **${n}** backup.`, ephemeral: true });
+    return true;
   }
   if (interaction.customId === 'sr_interval_modal') {
-    const n = Number(interaction.fields.getTextInputValue('minutes')); if (!Number.isInteger(n) || n < 5 || n > 10080) { await interaction.reply({ content: '❌ Nhập số phút từ 5 đến 10080.', ephemeral: true }); return true; }
-    await run(`UPDATE settings SET interval_minutes = ? WHERE guild_id = ?`, [n, interaction.guildId]); await interaction.reply({ content: `✅ Chu kỳ Auto Backup: **${n} phút**.`, ephemeral: true }); return true;
+    const n = Number(interaction.fields.getTextInputValue('minutes'));
+    if (!Number.isInteger(n) || n < 5 || n > 10080) {
+      await interaction.reply({ content: '❌ Nhập số phút từ 5 đến 10080.', ephemeral: true });
+      return true;
+    }
+    await run(`UPDATE settings SET interval_minutes = ? WHERE guild_id = ?`, [n, interaction.guildId]);
+    await interaction.reply({ content: `✅ Chu kỳ Auto Backup: **${n} phút**.`, ephemeral: true });
+    return true;
   }
   return false;
 }
