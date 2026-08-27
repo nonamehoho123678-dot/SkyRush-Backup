@@ -1,31 +1,20 @@
 const fs = require("fs");
-const path = require("path");
+const { getBackupFile, ensureServerFolder } = require("./storage");
 
-function saveBackup(id, data) {
+function saveBackup(guild, id, data) {
+    if (!guild?.id) throw new Error("Guild không tồn tại.");
 
-    const folder = path.join(
-        __dirname,
-        "..",
-        "..",
-        "backups"
-    );
+    ensureServerFolder(guild);
 
-    if (!fs.existsSync(folder)) {
-        fs.mkdirSync(folder);
-    }
-
-    const file = path.join(
-        folder,
-        `${id}.json`
-    );
+    const file = getBackupFile(guild, id);
 
     fs.writeFileSync(
         file,
-        JSON.stringify(data, null, 4)
+        JSON.stringify(data, null, 4),
+        "utf8"
     );
 
     return file;
-
 }
 
 module.exports = saveBackup;
