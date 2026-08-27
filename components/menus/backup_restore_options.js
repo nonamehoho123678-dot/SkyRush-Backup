@@ -1,4 +1,4 @@
-const { ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
+const { ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const serverLoadBackup = require("../../utils/restore/serverLoadBackup");
 const { getAccessibleBackups } = require("../../utils/backup/personalBackups");
@@ -21,7 +21,6 @@ function build(backupId) {
             { label: "Emoji", value: "emojis", emoji: "😀", description: "Khôi phục emoji" },
             { label: "Sticker", value: "stickers", emoji: "🏷️", description: "Khôi phục sticker" }
         );
-
     return {
         embeds: [new EmbedBuilder()
             .setTitle("⚙️ Tùy chọn Restore")
@@ -33,17 +32,13 @@ function build(backupId) {
 
 module.exports = {
     build,
-
     async execute(interaction) {
-        if (!interaction.guild || !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({ content: "❌ Chỉ Administrator mới được restore.", flags: 64 });
-        }
+        if (!interaction.guild) return interaction.reply({ content: "❌ Restore chỉ dùng trong server.", flags: 64 });
 
         const id = interaction.customId.replace("backup_restore_options_", "");
         const options = interaction.values || [];
         const backups = await getAccessibleBackups(interaction.client, interaction.user.id);
         const source = backups.find(item => item.id === id);
-
         if (!source || !fs.existsSync(source.filePath)) {
             return interaction.update({ content: `❌ Không tìm thấy backup \`${id}\`.`, embeds: [], components: [] });
         }
@@ -56,8 +51,7 @@ module.exports = {
             const percent = Math.max(0, Math.min(100, Number(p.percent) || 0));
             const now = Date.now();
             if (percent !== 100 && (percent === last || now - lastTime < 350)) return;
-            last = percent;
-            lastTime = now;
+            last = percent; lastTime = now;
             try {
                 await interaction.editReply({ content: [
                     `🔄 **Đang restore \`${id}\`**`, "", `\`[${bar(percent)}] ${percent}%\``, "",
@@ -71,24 +65,19 @@ module.exports = {
 
         try {
             const result = await serverLoadBackup(interaction.guild, id, progress, source.filePath, {
-                name: options.includes("name"),
-                icon: options.includes("icon"),
-                emojis: options.includes("emojis"),
-                stickers: options.includes("stickers")
+                name: options.includes("name"), icon: options.includes("icon"),
+                emojis: options.includes("emojis"), stickers: options.includes("stickers")
             });
-
             const labels = { name: "🏠 Tên", icon: "🖼️ Avatar", emojis: "😀 Emoji", stickers: "🏷️ Sticker" };
             const selected = options.map(v => labels[v]).filter(Boolean).join(", ") || "Không có";
             return interaction.editReply({
                 content: null,
-                embeds: [new EmbedBuilder()
-                    .setTitle("✅ Restore thành công")
+                embeds: [new EmbedBuilder().setTitle("✅ Restore thành công")
                     .setDescription(
                         `🆔 **Backup:** \`${id}\`\n📤 **Nguồn:** ${source.guildName}\n🏠 **Server đích:** ${interaction.guild.name}\n\n` +
                         `🎭 Roles: **${result.roles || 0}**\n📁 Categories: **${result.categories || 0}**\n💬 Channels: **${result.channels || 0}**\n😀 Emojis: **${result.emojis || 0}**\n🏷️ Stickers: **${result.stickers || 0}**\n\n` +
                         `⚙️ **Đã chọn:** ${selected}\n📊 **100% hoàn tất**`
-                    )
-                    .setTimestamp()]
+                    ).setTimestamp()]
             });
         } catch (error) {
             console.error("❌ LOAD BACKUP ERROR:", error);
