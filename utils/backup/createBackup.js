@@ -10,7 +10,7 @@ const backupFolder = path.join(
     "backups"
 );
 
-// Prevent manual backup and auto backup from running at the same time.
+// Chống /backup create và Auto Backup chạy cùng lúc.
 let backupRunning = false;
 
 function ensureBackupFolder() {
@@ -181,7 +181,6 @@ function getStickerData(sticker) {
     };
 }
 
-// Real backup implementation.
 async function performBackup(guild) {
     if (!guild) {
         throw new Error("Guild không tồn tại.");
@@ -189,11 +188,8 @@ async function performBackup(guild) {
 
     ensureBackupFolder();
 
-    console.log("");
-    console.log("================================");
-    console.log("📦 CREATE BACKUP");
-    console.log(`🏠 ${guild.name}`);
-    console.log("================================");
+    // Không log CREATE ở đây nữa.
+    // backup.js sẽ là nơi hiển thị kết quả để tránh log bị nhân đôi.
 
     try {
         await guild.roles.fetch();
@@ -293,20 +289,10 @@ async function performBackup(guild) {
         );
     }
 
-    console.log("================================");
-    console.log(`✅ Backup created: ${backupID}`);
-    console.log(`🎭 Roles: ${roles.length}`);
-    console.log(`💬 Channels: ${channels.length}`);
-    console.log(`😀 Emojis: ${emojis.length}`);
-    console.log(`🏷 Stickers: ${stickers.length}`);
-    console.log("================================");
-    console.log(`🆔 ${backupID}`);
-    console.log("");
-
+    // Không log thành công ở đây vì commands/backup/backup.js đã log.
     return backup;
 }
 
-// One shared lock for BOTH /backup create and Auto Backup.
 async function createBackup(guild) {
     if (backupRunning) {
         throw new Error(
@@ -324,7 +310,6 @@ async function createBackup(guild) {
     }
 }
 
-// Scheduler can use this to skip an automatic backup while a manual backup is running.
 createBackup.isRunning = () => backupRunning;
 
 module.exports = createBackup;
