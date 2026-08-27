@@ -12,29 +12,30 @@ module.exports = {
             return interaction.reply({ content: "❌ Chỉ Administrator mới được dùng backup.", ephemeral: true });
         }
 
-        const backups = (await getAccessibleBackups(interaction.client, interaction.user.id))
-            .filter(item => item.guildId === interaction.guild.id);
-
+        const backups = await getAccessibleBackups(interaction.client, interaction.user.id);
         if (!backups.length) {
-            return interaction.reply({
-                content: "🗑️ Server này chưa có backup để xóa.",
-                ephemeral: true
-            });
+            return interaction.reply({ content: "📦 Không có backup nào mà bạn có quyền quản lý.", ephemeral: true });
         }
+
+        const options = backups.slice(0, 25).map(item => ({
+            label: item.id.slice(0, 100),
+            value: `${item.guildId}:${item.id}`.slice(0, 100),
+            description: `Server: ${item.guildName}`.slice(0, 100)
+        }));
 
         const menu = new StringSelectMenuBuilder()
             .setCustomId("backup_delete_select")
-            .setPlaceholder("🗑️ Chọn backup để xóa")
-            .addOptions(backups.slice(0, 25).map(item => ({
-                label: item.id.slice(0, 100),
-                value: item.id,
-                description: `Tạo lúc: ${item.createdAt || "Không rõ"}`.slice(0, 100)
-            })));
+            .setPlaceholder("🗑️ Chọn backup muốn ẩn khỏi danh sách của bạn")
+            .addOptions(options);
 
         const embed = new EmbedBuilder()
             .setTitle("🗑️ Delete Backup")
-            .setDescription("Chọn backup của **server hiện tại** để xóa.")
-            .setFooter({ text: "Xóa backup là không thể hoàn tác" });
+            .setDescription(
+                "Chọn backup muốn **xóa khỏi danh sách cá nhân**.\n\n" +
+                "⚠️ Backup thật trong server **không bị xóa**.\n" +
+                "👥 Admin khác vẫn nhìn thấy và sử dụng được backup đó."
+            )
+            .setFooter({ text: "Xóa ở đây chỉ ẩn backup đối với tài khoản của bạn" });
 
         return interaction.reply({
             embeds: [embed],
