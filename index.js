@@ -1,13 +1,6 @@
 require("dotenv").config();
 
-const {
-    Client,
-    Collection,
-    GatewayIntentBits,
-    REST,
-    Routes,
-    ActivityType
-} = require("discord.js");
+const { Client, Collection, GatewayIntentBits, REST, Routes, ActivityType } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 
@@ -18,10 +11,7 @@ const GUILD_ID = process.env.GUILD_ID || process.env.GUILDID;
 if (!TOKEN) { console.error("❌ Thiếu DISCORD_TOKEN hoặc TOKEN trong file .env"); process.exit(1); }
 if (!CLIENT_ID) { console.error("❌ Thiếu CLIENT_ID trong file .env"); process.exit(1); }
 
-const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildEmojisAndStickers]
-});
-
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildEmojisAndStickers] });
 client.commands = new Collection();
 const commands = [];
 
@@ -39,16 +29,11 @@ function loadCommands(directory) {
             client.commands.set(command.data.name, command);
             commands.push(command.data.toJSON());
             console.log(`✅ Loaded command: /${command.data.name}`);
-        } catch (error) {
-            console.error(`❌ Không thể load command: ${filePath}`);
-            console.error(error);
-        }
+        } catch (error) { console.error(`❌ Không thể load command: ${filePath}`, error); }
     }
 }
 
-console.log("\n========================================");
-console.log("📂 LOADING COMMANDS...");
-console.log("========================================");
+console.log("\n========================================\n📂 LOADING COMMANDS...\n========================================");
 loadCommands(path.join(__dirname, "commands"));
 console.log(`\n📦 Tổng command đã load: ${client.commands.size}`);
 console.log(`📡 Tổng command chuẩn bị đăng ký: ${commands.length}`);
@@ -58,33 +43,21 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 async function registerCommands() {
     try {
-        console.log("\n========================================");
-        console.log("📡 ĐĂNG KÝ SLASH COMMANDS");
-        console.log("========================================");
-
+        console.log("\n========================================\n📡 ĐĂNG KÝ SLASH COMMANDS\n========================================");
         if (GUILD_ID) {
             await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
             console.log(`🏠 Đã đăng ký ${commands.length} command cho server test.`);
             return;
         }
-
-        // Global bulk overwrite: xóa các command global cũ như /backup create.
         await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
         console.log(`🌍 Đã đăng ký ${commands.length} global command.`);
-
-        // Command guild-specific không tự biến mất khi global command thay đổi.
-        // Ghi đè danh sách command ở từng server để /backup create cũ biến mất.
         for (const guild of client.guilds.cache.values()) {
             try {
                 await guild.commands.set(commands);
                 console.log(`🧹 Đã đồng bộ command cho: ${guild.name}`);
-            } catch (error) {
-                console.error(`❌ Không thể đồng bộ command cho ${guild.name}:`, error.message);
-            }
+            } catch (error) { console.error(`❌ Không thể đồng bộ command cho ${guild.name}:`, error.message); }
         }
-    } catch (error) {
-        console.error("❌ REGISTER COMMAND ERROR:", error);
-    }
+    } catch (error) { console.error("❌ REGISTER COMMAND ERROR:", error); }
 }
 
 function startAutoBackup() {
@@ -98,14 +71,11 @@ function startAutoBackup() {
         else if (typeof scheduler.init === "function") scheduler.init(client);
         else return console.warn("⚠️ scheduler.js không có function start/init.");
         console.log("⏰ Auto Backup đã khởi động.");
-    } catch (error) {
-        console.error("❌ AUTO BACKUP ERROR:", error);
-    }
+    } catch (error) { console.error("❌ AUTO BACKUP ERROR:", error); }
 }
 
 client.once("clientReady", async () => {
-    console.log("\n========================================");
-    console.log("🚀 SKYRUSH BACKUP ONLINE");
+    console.log("\n========================================\n🚀 SKYRUSH BACKUP ONLINE");
     console.log(`🤖 Bot: ${client.user.tag}`);
     console.log(`🆔 ID: ${client.user.id}`);
     console.log(`📦 Commands: ${client.commands.size}`);
@@ -126,25 +96,23 @@ client.on("interactionCreate", async interaction => {
                 if (typeof button.execute === "function") await button.execute(interaction);
             } catch (error) {
                 console.error("❌ BUTTON ERROR:", error);
-                try {
-                    if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) await interaction.reply({ content: "❌ Đã xảy ra lỗi khi xử lý nút.", flags: 64 });
-                } catch (replyError) { console.error("❌ Không thể gửi lỗi button:", replyError.message); }
+                try { if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) await interaction.reply({ content: "❌ Đã xảy ra lỗi khi xử lý nút.", flags: 64 }); } catch {}
             }
             return;
         }
 
         if (interaction.isStringSelectMenu()) {
             try {
-                const menuPath = path.join(__dirname, "components", "menus", `${interaction.customId}.js`);
+                let menuFile = `${interaction.customId}.js`;
+                if (interaction.customId.startsWith("backup_restore_options_")) menuFile = "backup_restore_options.js";
+                const menuPath = path.join(__dirname, "components", "menus", menuFile);
                 if (!fs.existsSync(menuPath)) return;
                 delete require.cache[require.resolve(menuPath)];
                 const menu = require(menuPath);
                 if (typeof menu.execute === "function") await menu.execute(interaction);
             } catch (error) {
                 console.error("❌ SELECT MENU ERROR:", error);
-                try {
-                    if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) await interaction.reply({ content: "❌ Đã xảy ra lỗi khi xử lý menu.", flags: 64 });
-                } catch (replyError) { console.error("❌ Không thể gửi lỗi select menu:", replyError.message); }
+                try { if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) await interaction.reply({ content: "❌ Đã xảy ra lỗi khi xử lý menu.", flags: 64 }); } catch {}
             }
             return;
         }
@@ -163,21 +131,14 @@ client.on("interactionCreate", async interaction => {
 
     const command = client.commands.get(interaction.commandName);
     if (!command) {
-        try {
-            if (interaction.replied || interaction.deferred) await interaction.editReply({ content: "❌ Command không tồn tại.", embeds: [], components: [] });
-            else if (interaction.isRepliable()) await interaction.reply({ content: "❌ Command không tồn tại.", flags: 64 });
-        } catch (error) { console.error("❌ Không thể gửi lỗi command:", error.message); }
+        try { if (interaction.replied || interaction.deferred) await interaction.editReply({ content: "❌ Command không tồn tại.", embeds: [], components: [] }); else if (interaction.isRepliable()) await interaction.reply({ content: "❌ Command không tồn tại.", flags: 64 }); } catch {}
         return;
     }
 
-    try {
-        await command.execute(interaction);
-    } catch (error) {
+    try { await command.execute(interaction); }
+    catch (error) {
         console.error(`❌ ERROR /${interaction.commandName}`, error);
-        try {
-            if (interaction.replied || interaction.deferred) await interaction.editReply({ content: "❌ Đã xảy ra lỗi khi thực hiện command.", embeds: [], components: [] });
-            else if (interaction.isRepliable()) await interaction.reply({ content: "❌ Đã xảy ra lỗi khi thực hiện command.", flags: 64 });
-        } catch (replyError) { console.error("❌ Không thể gửi lỗi Discord:", replyError.message); }
+        try { if (interaction.replied || interaction.deferred) await interaction.editReply({ content: "❌ Đã xảy ra lỗi khi thực hiện command.", embeds: [], components: [] }); else if (interaction.isRepliable()) await interaction.reply({ content: "❌ Đã xảy ra lỗi khi thực hiện command.", flags: 64 }); } catch {}
     }
 });
 
