@@ -1,7 +1,6 @@
 const { PermissionFlagsBits } = require("discord.js");
-const fs = require("fs");
-const { getAccessibleBackups } = require("../../utils/backup/personalBackups");
-const { errorEmbed, successEmbed } = require("../../utils/embed");
+const { getAccessibleBackups, hideBackupForUser } = require("../../utils/backup/personalBackups");
+const { successEmbed, errorEmbed } = require("../../utils/embed");
 
 module.exports = {
     async execute(interaction) {
@@ -9,23 +8,32 @@ module.exports = {
             return interaction.reply({ content: "❌ Chỉ Administrator mới được xóa backup.", ephemeral: true });
         }
 
-        const id = interaction.values[0];
-        const backups = await getAccessibleBackups(interaction.client, interaction.user.id);
-        const source = backups.find(item => item.id === id && item.guildId === interaction.guild.id);
+        const raw = interaction.values[0] || "";
+        const split = raw.indexOf(":");
+        const guildId = split >= 0 ? raw.slice(0, split) : interaction.guild.id;
+        const id = split >= 0 ? raw.slice(split + 1) : raw;
 
-        if (!source || !fs.existsSync(source.filePath)) {
+        const backups = await getAccessibleBackups(interaction.client, interaction.user.id);
+        const source = backups.find(item => item.guildId === guildId && item.id === id);
+
+        if (!source) {
             return interaction.update({
-                content: `❌ Backup \`${id}\` không tồn tại trong server này.`,
+                content: `❌ Không tìm thấy backup \`${id}\` trong danh sách của bạn.`,
                 embeds: [],
                 components: []
             });
         }
 
         try {
-            fs.unlinkSync(source.filePath);
+            hideBackupForUser(interaction.user.id, guildId, id);
             return interaction.update({
                 content: null,
-                embeds: [successEmbed("🗑️ Backup Deleted", `Đã xóa backup \`${id}\` khỏi server **${interaction.guild.name}**.`)],
+                embeds: [successEmbed(
+                    "🗑️ Đã xóa khỏi danh sách của bạn",
+                    `Backup \`${id}\` của server **${source.guildName}** đã được ẩn khỏi tài khoản của bạn.\n\n` +
+                    "✅ File backup trong server vẫn còn.\n" +
+                    "👥 Admin khác vẫn thấy và dùng được backup này."
+                )],
                 components: []
             });
         } catch (error) {
