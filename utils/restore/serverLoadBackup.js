@@ -6,12 +6,12 @@ const { getBackupFile } = require("../backup/storage");
 
 let restoring = false;
 
-async function serverLoadBackup(guild, id, onProgress = null) {
+async function serverLoadBackup(guild, id, onProgress = null, sourceFile = null) {
     if (!guild?.id) throw new Error("Guild không tồn tại.");
 
-    const source = getBackupFile(guild, id);
+    const source = sourceFile || getBackupFile(guild, id);
     if (!fs.existsSync(source)) {
-        throw new Error(`Backup ${id} không tồn tại trong server này.`);
+        throw new Error(`Backup ${id} không tồn tại hoặc file backup không còn tồn tại.`);
     }
 
     if (restoring) {
@@ -22,7 +22,7 @@ async function serverLoadBackup(guild, id, onProgress = null) {
 
     const legacyRoot = path.join(__dirname, "..", "..", "backups");
     const legacyFile = path.join(legacyRoot, `${id}.json`);
-    const tempFile = path.join(legacyRoot, `.restore-${guild.id}-${id}.json`);
+    const tempFile = path.join(legacyRoot, `.restore-${guild.id}-${Date.now()}-${id}.json`);
 
     fs.mkdirSync(legacyRoot, { recursive: true });
 
