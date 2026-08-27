@@ -1,23 +1,15 @@
-const {
-    PermissionFlagsBits,
-    ActionRowBuilder,
-    StringSelectMenuBuilder,
-    EmbedBuilder
-} = require("discord.js");
+const { ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder } = require("discord.js");
 const { getAccessibleBackups } = require("../../utils/backup/personalBackups");
 
 module.exports = {
     async execute(interaction) {
-        if (!interaction.guild || !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({ content: "❌ Chỉ Administrator mới được dùng backup.", ephemeral: true });
+        if (!interaction.guild) {
+            return interaction.reply({ content: "❌ Load backup chỉ dùng trong server.", flags: 64 });
         }
 
         const backups = await getAccessibleBackups(interaction.client, interaction.user.id);
         if (!backups.length) {
-            return interaction.reply({
-                content: "📦 Bạn chưa có backup nào mà bạn có quyền quản lý.",
-                ephemeral: true
-            });
+            return interaction.reply({ content: "📦 Bạn chưa có backup nào được phép sử dụng.", flags: 64 });
         }
 
         const options = backups.slice(0, 25).map(item => ({
@@ -33,13 +25,13 @@ module.exports = {
 
         const embed = new EmbedBuilder()
             .setTitle("🔄 Load Backup")
-            .setDescription("Chọn backup bên dưới để khôi phục vào **server hiện tại**.")
-            .setFooter({ text: "Chỉ hiển thị backup bạn có quyền Administrator" });
+            .setDescription("Chọn backup để khôi phục vào **server hiện tại**.")
+            .setFooter({ text: "Hiển thị backup bạn tạo và backup của server bạn là Admin" });
 
         return interaction.reply({
             embeds: [embed],
             components: [new ActionRowBuilder().addComponents(menu)],
-            ephemeral: true
+            flags: 64
         });
     }
 };
