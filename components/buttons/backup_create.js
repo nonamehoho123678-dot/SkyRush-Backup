@@ -1,21 +1,21 @@
-const { PermissionFlagsBits } = require("discord.js");
 const createBackup = require("../../utils/backup/createBackup");
 const { successEmbed, errorEmbed } = require("../../utils/embed");
 
 module.exports = {
     async execute(interaction) {
-        if (!interaction.guild || !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({ content: "❌ Chỉ Administrator mới được dùng backup.", ephemeral: true });
+        if (!interaction.guild) {
+            return interaction.reply({ content: "❌ Backup chỉ dùng trong server.", flags: 64 });
         }
 
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: 64 });
 
         try {
-            const backup = await createBackup(interaction.guild);
+            const backup = await createBackup(interaction.guild, interaction.user.id);
             return interaction.editReply({
                 embeds: [successEmbed("📦 Backup Created", [
                     `🆔 **ID**\n\`${backup.id}\``,
                     `🏠 **Server**\n${interaction.guild.name}`,
+                    `👤 **Người tạo**\n<@${interaction.user.id}>`,
                     `🎭 Roles: **${backup.roles?.length || 0}**`,
                     `💬 Channels: **${backup.channels?.length || 0}**`,
                     `😀 Emojis: **${backup.emojis?.length || 0}**`,
@@ -26,9 +26,7 @@ module.exports = {
             });
         } catch (error) {
             console.error("❌ CREATE BUTTON ERROR:", error);
-            return interaction.editReply({
-                embeds: [errorEmbed("Backup Failed", `❌ ${error.message || "Không thể tạo backup."}`)]
-            });
+            return interaction.editReply({ embeds: [errorEmbed("Backup Failed", `❌ ${error.message || "Không thể tạo backup."}`)] });
         }
     }
 };
