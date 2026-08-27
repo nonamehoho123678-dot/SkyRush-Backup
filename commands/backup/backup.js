@@ -1,6 +1,5 @@
 const {
     SlashCommandBuilder,
-    PermissionFlagsBits,
     ApplicationIntegrationType,
     InteractionContextType,
     EmbedBuilder,
@@ -13,65 +12,32 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName("backup")
         .setDescription("Mở bảng điều khiển SkyRush Backup")
-        .setIntegrationTypes(
-            ApplicationIntegrationType.GuildInstall,
-            ApplicationIntegrationType.UserInstall
-        )
-        .setContexts(
-            InteractionContextType.Guild,
-            InteractionContextType.BotDM,
-            InteractionContextType.PrivateChannel
-        )
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        .setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall)
+        .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel),
 
     async execute(interaction) {
         if (!interaction.guild) {
-            return interaction.reply({
-                content: "❌ /backup cần được sử dụng trong server.",
-                ephemeral: true
-            });
-        }
-
-        if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({
-                content: "❌ Chỉ Administrator mới được sử dụng SkyRush Backup.",
-                ephemeral: true
-            });
+            return interaction.reply({ content: "❌ /backup cần được sử dụng trong server.", flags: 64 });
         }
 
         const embed = new EmbedBuilder()
             .setTitle("⚡ SkyRush Backup")
             .setDescription(
                 `🏠 **${interaction.guild.name}**\n\n` +
-                "📦 **Create Backup**\nTạo một bản backup mới của server.\n\n" +
-                "🔄 **Load Backup**\nChọn backup để khôi phục server.\n\n" +
-                "🗑️ **Delete Backup**\nChọn backup để xóa.\n\n" +
+                "📦 **Create Backup**\nTạo backup cho server này.\n\n" +
+                "🔄 **Load Backup**\nChọn backup mà bạn được phép sử dụng.\n\n" +
+                "🗑️ **Delete Backup**\nẨn backup khỏi danh sách của bạn.\n\n" +
                 "👇 **Chọn chức năng bên dưới**"
             )
-            .setFooter({ text: "SkyRush Backup • Administrator" })
+            .setFooter({ text: "SkyRush Backup • Backup cá nhân + quyền Admin server" })
             .setTimestamp();
 
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId("backup_create")
-                .setLabel("Create Backup")
-                .setEmoji("📦")
-                .setStyle(ButtonStyle.Success),
-            new ButtonBuilder()
-                .setCustomId("backup_load")
-                .setLabel("Load Backup")
-                .setEmoji("🔄")
-                .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-                .setCustomId("backup_delete")
-                .setLabel("Delete Backup")
-                .setEmoji("🗑️")
-                .setStyle(ButtonStyle.Danger)
+            new ButtonBuilder().setCustomId("backup_create").setLabel("Create Backup").setEmoji("📦").setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId("backup_load").setLabel("Load Backup").setEmoji("🔄").setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId("backup_delete").setLabel("Delete Backup").setEmoji("🗑️").setStyle(ButtonStyle.Danger)
         );
 
-        return interaction.reply({
-            embeds: [embed],
-            components: [row]
-        });
+        return interaction.reply({ embeds: [embed], components: [row] });
     }
 };
