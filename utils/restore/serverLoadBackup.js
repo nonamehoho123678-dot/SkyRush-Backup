@@ -1,6 +1,5 @@
 const fs = require("fs");
 const path = require("path");
-
 const loadBackup = require("./loadBackup");
 const { getBackupFile } = require("../backup/storage");
 
@@ -11,7 +10,7 @@ async function serverLoadBackup(guild, id, onProgress = null, sourceFile = null)
 
     const source = sourceFile || getBackupFile(guild, id);
     if (!fs.existsSync(source)) {
-        throw new Error(`Backup ${id} không tồn tại hoặc file backup không còn tồn tại.`);
+        throw new Error(`Backup ${id} không tồn tại.`);
     }
 
     if (restoring) {
@@ -22,7 +21,7 @@ async function serverLoadBackup(guild, id, onProgress = null, sourceFile = null)
 
     const legacyRoot = path.join(__dirname, "..", "..", "backups");
     const legacyFile = path.join(legacyRoot, `${id}.json`);
-    const tempFile = path.join(legacyRoot, `.restore-${guild.id}-${Date.now()}-${id}.json`);
+    const tempFile = path.join(legacyRoot, `.restore-${guild.id}-${id}.json`);
 
     fs.mkdirSync(legacyRoot, { recursive: true });
 
@@ -46,12 +45,10 @@ async function serverLoadBackup(guild, id, onProgress = null, sourceFile = null)
 
             if (hadOldFile && oldData) {
                 fs.writeFileSync(legacyFile, oldData);
-            }
-            else if (fs.existsSync(legacyFile)) {
+            } else if (fs.existsSync(legacyFile)) {
                 fs.unlinkSync(legacyFile);
             }
-        }
-        catch (cleanupError) {
+        } catch (cleanupError) {
             console.log("⚠️ Restore cleanup warning:", cleanupError.message);
         }
 
