@@ -1,6 +1,8 @@
 const {
     SlashCommandBuilder,
-    PermissionFlagsBits
+    PermissionFlagsBits,
+    ApplicationIntegrationType,
+    InteractionContextType
 } = require("discord.js");
 
 const fs = require("fs");
@@ -19,9 +21,14 @@ const {
     getBackupFile,
     sanitizeServerName
 } = require("../../utils/backup/storage");
+const {
+    getAccessibleBackups,
+    findAccessibleBackup
+} = require("../../utils/backup/personalBackups");
 
-function isAdmin(interaction) {
+function isGuildAdmin(interaction) {
     return Boolean(
+        interaction.guild &&
         interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)
     );
 }
@@ -53,20 +60,83 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName("backup")
         .setDescription("Quản lý backup server")
+        .setIntegrationTypes(
+            ApplicationIntegrationType.GuildInstall,
+            ApplicationIntegrationType.UserInstall
+        )
+        .setContexts(
+            InteractionContextType.Guild,
+            InteractionContextType.BotDM,
+            InteractionContextType.PrivateChannel
+        )
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addSubcommand(sub => sub.setName("create").setDescription("Tạo backup server"))
-        .addSubcommand(sub => sub.setName("list").setDescription("Xem danh sách backup"))
+        .addSubcommand(sub => sub.setName("list").setDescription("Xem backup của server hiện tại"))
+        .addSubcommand(sub => sub.setName("mine").setDescription("Xem backup bạn có quyền quản lý ở các server"))
         .addSubcommand(sub => sub.setName("info").setDescription("Xem thông tin backup").addStringOption(option => option.setName("id").setDescription("Backup ID").setRequired(true)))
         .addSubcommand(sub => sub.setName("delete").setDescription("Xóa backup").addStringOption(option => option.setName("id").setDescription("Backup ID").setRequired(true)))
-        .addSubcommand(sub => sub.setName("load").setDescription("Khôi phục backup").addStringOption(option => option.setName("id").setDescription("Backup ID").setRequired(true)))
+        .addSubcommand(sub => sub.setName("load").setDescription("Khôi phục backup vào server hiện tại").addStringOption(option => option.setName("id").setDescription("Backup ID").setRequired(true)))
         .addSubcommand(sub => sub.setName("panel").setDescription("Mở bảng điều khiển backup")),
 
     async execute(interaction) {
-        if (!interaction.guild) {
-            return interaction.reply({ content: "❌ Lệnh này chỉ dùng trong server.", ephemeral: true });
+        const sub = interaction.options.getSubcommand();
+
+        // =====================================================
+        // 👤 PERSONAL BACKUP LIST
+        // Chạy được khi app được cài vào tài khoản người dùng.
+        // Không cần guild hiện tại.
+        // =====================================================
+        if (sub === "mine") {
+            try {
+                const backups = await getAccessibleBackups(interaction.client, interaction.user.id);
+
+                if (!backups.length) {
+                    return interaction.reply({
+                        embeds: [infoEmbed(
+                            "📦 Backup của bạn",
+                            "Chưa tìm thấy backup nào trong các server mà bạn đang có quyền **Administrator** và bot đang tham gia."
+                        )],
+                        ephemeral: true
+                    });
+                }
+
+                const shown = backups.slice(0, 20);
+                const lines = shown.map(item =>
+                    `📦 \`${item.id}\` — 🏠 **${item.guildName}**\n└ 📅 ${item.createdAt || "Không rõ"}`
+                );
+
+                if (backups.length > shown.length) {
+                    lines.push(`\n… và **${backups.length - shown.length}** backup khác.`);
+                }
+
+                return interaction.reply({
+                    embeds: [infoEmbed(
+                        "📦 Backup của bạn",
+                        "Các backup bạn có thể quản lý vì bạn là Administrator trong server nguồn:\n\n" + lines.join("\n\n") +
+                        "\n\n💡 Muốn dùng backup cho server khác: vào server đích và dùng **/backup load id:<ID>**."
+                    )],
+                    ephemeral: true
+                });
+            }
+            catch (error) {
+                console.error("❌ PERSONAL BACKUP LIST ERROR:", error);
+                return interaction.reply({
+                    embeds: [errorEmbed("Personal Backup Failed", error.message)],
+                    ephemeral: true
+                });
+            }
         }
 
-        if (!isAdmin(interaction)) {
+        // Các thao tác backup/restore thật sự phải chạy trong server
+        // và người dùng phải có Administrator.
+        if (!interaction.guild) {
+            return interaction.reply({
+                content: "❌ Lệnh này cần được chạy trong một server. Trong DM bạn chỉ có thể dùng **/backup mine** để xem backup của mình.",
+                ephemeral: true
+            });
+        }
+
+        if (!isGuildAdmin(interaction)) {
             return interaction.reply({
                 content: "❌ Chỉ thành viên có quyền **Administrator** mới được sử dụng hệ thống backup.",
                 ephemeral: true
@@ -74,18 +144,22 @@ module.exports = {
         }
 
         const guild = interaction.guild;
-        const sub = interaction.options.getSubcommand();
         const folder = getServerFolder(guild);
-
         fs.mkdirSync(folder, { recursive: true });
 
+        // =====================================================
+        // 🎛️ PANEL
+        // =====================================================
         if (sub === "panel") {
             return interaction.reply({
-                content: `⚡ **SkyRush Backup Panel**\n\n🏠 Server: **${guild.name}**\n📦 Backup chỉ thuộc server này:`,
+                content: `⚡ **SkyRush Backup Panel**\n\n🏠 Server: **${guild.name}**\n📦 Backup thuộc server này:`,
                 components: [backupSelect(guild)]
             });
         }
 
+        // =====================================================
+        // 📦 CREATE
+        // =====================================================
         if (sub === "create") {
             await interaction.deferReply();
 
@@ -130,6 +204,9 @@ module.exports = {
             }
         }
 
+        // =====================================================
+        // 📋 LIST - chỉ backup server hiện tại
+        // =====================================================
         if (sub === "list") {
             try {
                 const files = fs.readdirSync(folder)
@@ -153,6 +230,9 @@ module.exports = {
             }
         }
 
+        // =====================================================
+        // ℹ️ INFO
+        // =====================================================
         if (sub === "info") {
             const id = interaction.options.getString("id", true);
             const file = getBackupFile(guild, id);
@@ -186,6 +266,9 @@ module.exports = {
             }
         }
 
+        // =====================================================
+        // 🗑️ DELETE
+        // =====================================================
         if (sub === "delete") {
             const id = interaction.options.getString("id", true);
             const file = getBackupFile(guild, id);
@@ -211,17 +294,37 @@ module.exports = {
             }
         }
 
+        // =====================================================
+        // 🔄 LOAD
+        // Nếu ID không có trong server đích, tìm trong các server
+        // mà người dùng đang là Administrator.
+        // =====================================================
         if (sub === "load") {
             await interaction.deferReply();
 
             const id = interaction.options.getString("id", true);
-            const file = getBackupFile(guild, id);
+            const localFile = getBackupFile(guild, id);
+            let sourceFile = localFile;
+            let sourceInfo = null;
 
-            if (!fs.existsSync(file)) {
-                return interaction.editReply({
-                    embeds: [errorEmbed("Restore Failed", `❌ Backup \`${id}\` không tồn tại trong server này.`)],
-                    components: []
-                });
+            if (!fs.existsSync(localFile)) {
+                sourceInfo = await findAccessibleBackup(
+                    interaction.client,
+                    interaction.user.id,
+                    id
+                );
+
+                if (!sourceInfo) {
+                    return interaction.editReply({
+                        embeds: [errorEmbed(
+                            "Restore Failed",
+                            `❌ Backup \`${id}\` không tồn tại trong server hiện tại và bạn không có quyền quản lý backup này ở server khác.`
+                        )],
+                        components: []
+                    });
+                }
+
+                sourceFile = sourceInfo.filePath;
             }
 
             let lastPercent = -1;
@@ -266,20 +369,30 @@ module.exports = {
                     components: []
                 });
 
-                const result = await loadBackup(guild, id, updateProgress);
+                const result = await loadBackup(
+                    guild,
+                    id,
+                    updateProgress,
+                    sourceFile
+                );
+
+                const sourceText = sourceInfo
+                    ? `\n\n📤 **Nguồn backup:** ${sourceInfo.guildName}`
+                    : "";
 
                 return interaction.editReply({
                     content: null,
                     embeds: [successEmbed("Restore thành công", [
                         "✅ **Khôi phục backup thành công!**",
                         `🆔 Backup: \`${id}\``,
-                        `🏠 Server: **${guild.name}**`,
+                        `🏠 Server đích: **${guild.name}**`,
+                        sourceText.trim(),
                         `🎭 Roles: **${result.roles || 0}**`,
                         `📁 Categories: **${result.categories || 0}**`,
                         `💬 Channels: **${result.channels || 0}**`,
                         `😀 Emojis: **${result.emojis || 0}**`,
                         "📊 Tiến trình: **100%**"
-                    ].join("\n\n"))],
+                    ].filter(Boolean).join("\n\n"))],
                     components: []
                 });
             }
@@ -293,6 +406,9 @@ module.exports = {
             }
         }
 
-        return interaction.reply({ content: "❌ Không xác định được lệnh backup.", ephemeral: true });
+        return interaction.reply({
+            content: "❌ Không xác định được lệnh backup.",
+            ephemeral: true
+        });
     }
 };
