@@ -1,5 +1,21 @@
 const { ChannelType } = require("discord.js");
 
+async function retry(fn, label = "Operation") {
+    for (let attempt = 1; attempt <= 5; attempt++) {
+        try {
+            return await fn();
+        } catch (error) {
+            console.log(`⚠️ ${label} lỗi lần ${attempt}/5: ${error.message}`);
+            if (attempt < 5) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+    }
+
+    console.log(`❌ ${label} thất bại sau 5 lần. Bỏ qua.`);
+    return null;
+}
+
 /**
  * Áp dụng lại permission overwrites sau khi roles/categories/channels
  * đã được restore. Làm riêng bước này để roleMap và channel hiện tại
@@ -8,11 +24,10 @@ const { ChannelType } = require("discord.js");
 async function applyPermissions(guild, backup) {
     if (!guild || !backup) return { channels: 0, overwrites: 0 };
 
-    await guild.roles.fetch();
-    await guild.channels.fetch();
+    await retry(() => guild.roles.fetch(), "Fetch roles for permissions");
+    await retry(() => guild.channels.fetch(), "Fetch channels for permissions");
     await guild.members.fetch().catch(() => null);
 
-    // Map role ID của backup -> role ID hiện tại.
     const roleMap = new Map();
     for (const roleData of Array.isArray(backup.roles) ? backup.roles : []) {
         if (roleData.name === "@everyone") {
@@ -26,8 +41,6 @@ async function applyPermissions(guild, backup) {
 
     const backupChannels = Array.isArray(backup.channels) ? backup.channels : [];
     const categories = backupChannels.filter(c => Number(c.type) === ChannelType.GuildCategory);
-
-    // Backup channel ID -> channel ID hiện tại.
     const channelMap = new Map();
 
     for (const data of categories) {
@@ -70,7 +83,6 @@ async function applyPermissions(guild, backup) {
             if (type === 0) {
                 targetId = roleMap.get(permission.id) || null;
             } else if (type === 1) {
-                // User overwrite có thể set trực tiếp bằng ID, không cần member cache.
                 targetId = permission.id;
             }
 
@@ -89,19 +101,18 @@ async function applyPermissions(guild, backup) {
 
         if (overwrites.length === 0) continue;
 
-        try {
-            // set() thay toàn bộ overwrite bằng đúng dữ liệu backup.
-            // Điều này cũng xóa overwrite cũ không còn tồn tại trong backup.
-            await channel.permissionOverwrites.set(
+        const result = await retry(
+            () => channel.permissionOverwrites.set(
                 overwrites,
                 `SkyRush Backup restore permissions ${backup.id || ""}`
-            );
+            ),
+            `Set permissions ${data.name}`
+        );
 
+        if (result) {
             channelsApplied++;
             overwritesApplied += overwrites.length;
             console.log(`🔐 Permission SET OK: ${data.name} (${overwrites.length})`);
-        } catch (error) {
-            console.log(`❌ Permission SET lỗi: ${data.name} | ${error.message}`);
         }
     }
 
