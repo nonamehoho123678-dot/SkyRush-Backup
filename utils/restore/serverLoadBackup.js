@@ -6,6 +6,50 @@ const { getBackupFile } = require("../backup/storage");
 
 let restoring = false;
 
+async function restoreRolePermissions(guild, backup) {
+    if (!guild || !backup) return 0;
+
+    await guild.roles.fetch();
+
+    let applied = 0;
+
+    for (const roleData of Array.isArray(backup.roles) ? backup.roles : []) {
+        if (roleData.name === "@everyone" || roleData.name === "SkyRush Backup") continue;
+
+        const role = guild.roles.cache.find(r => r.name === roleData.name);
+        if (!role || !role.editable) continue;
+
+        try {
+            await role.edit({
+                permissions: BigInt(String(roleData.permissions || "0")),
+                reason: `SkyRush Backup restore role permissions ${backup.id || ""}`
+            });
+            applied++;
+            console.log(`🔐 Role permission SET OK: ${role.name}`);
+        } catch (error) {
+            console.log(`⚠️ Không set được permission role ${role.name}: ${error.message}`);
+        }
+    }
+
+    // @everyone cũng cần permission đúng theo backup.
+    const everyoneData = (Array.isArray(backup.roles) ? backup.roles : [])
+        .find(r => r.name === "@everyone" || r.id === guild.id);
+
+    if (everyoneData) {
+        try {
+            await guild.roles.everyone.edit({
+                permissions: BigInt(String(everyoneData.permissions || "0")),
+                reason: `SkyRush Backup restore @everyone permissions ${backup.id || ""}`
+            });
+            applied++;
+        } catch (error) {
+            console.log(`⚠️ Không set được permission @everyone: ${error.message}`);
+        }
+    }
+
+    return applied;
+}
+
 async function serverLoadBackup(guild, id, onProgress = null, sourceFile = null, options = {}) {
     if (!guild?.id) throw new Error("Guild không tồn tại.");
 
@@ -22,6 +66,50 @@ async function serverLoadBackup(guild, id, onProgress = null, sourceFile = null,
     let oldData = null;
     let hadOldFile = false;
 
+    // =====================================================
+    // QUAN TRỌNG: loadBackup cũ set permission role ngay lúc
+    // tạo/sửa role. Điều này có thể làm quyền channel bị lệch
+    // trước khi hierarchy hoàn tất. Tạm thời chặn permissions
+    // trong bước tạo/sửa role.
+    // =====================================================
+    const originalCreate = guild.roles.create.bind(guild.roles);
+    const originalRoleEdits = new Map();
+
+    const disableRolePermissionsDuringStructureRestore = () => {
+        guild.roles.create = async options => {
+            const safeOptions = { ...(options || {}) };
+            delete safeOptions.permissions;
+            return originalCreate(safeOptions);
+        };
+
+        for (const role of guild.roles.cache.values()) {
+            if (!role || typeof role.edit !== "function") continue;
+
+            const original = role.edit.bind(role);
+            originalRoleEdits.set(role, original);
+
+            role.edit = async options => {
+                const safeOptions = { ...(options || {}) };
+                delete safeOptions.permissions;
+                return original(safeOptions);
+            };
+        }
+    };
+
+    const restoreOriginalRoleMethods = () => {
+        guild.roles.create = originalCreate;
+
+        for (const [role, original] of originalRoleEdits) {
+            try {
+                role.edit = original;
+            } catch {
+                // Role có thể đã bị Discord xóa/refresh; bỏ qua.
+            }
+        }
+
+        originalRoleEdits.clear();
+    };
+
     try {
         const backup = JSON.parse(fs.readFileSync(source, "utf8"));
 
@@ -33,12 +121,26 @@ async function serverLoadBackup(guild, id, onProgress = null, sourceFile = null,
         fs.copyFileSync(source, tempFile);
         fs.renameSync(tempFile, legacyFile);
 
+        // -----------------------------------------------------
+        // BƯỚC 1: tạo/map role nhưng KHÔNG set permission role
+        // -----------------------------------------------------
+        disableRolePermissionsDuringStructureRestore();
+
         const result = await loadBackup(guild, id, onProgress);
 
-        // QUAN TRỌNG: loadBackup có bước permission cũ, nhưng ở một số
-        // trường hợp role/channel vừa được tạo hoặc vừa được map xong thì
-        // overwrite có thể chưa áp dụng đúng. Chạy thêm một bước SET cuối
-        // cùng sau khi toàn bộ cấu trúc đã tồn tại.
+        // -----------------------------------------------------
+        // BƯỚC 2: loadBackup đã xếp role positions/hierarchy.
+        // Khôi phục lại method rồi set permission role SAU CÙNG.
+        // -----------------------------------------------------
+        restoreOriginalRoleMethods();
+
+        const rolePermissionCount = await restoreRolePermissions(guild, backup);
+        console.log(`🔐 Role permissions restored: ${rolePermissionCount}`);
+
+        // -----------------------------------------------------
+        // BƯỚC 3: sau khi role + hierarchy + role permissions ổn
+        // định, mới set permission overwrite cho category/channel.
+        // -----------------------------------------------------
         try {
             const permissionResult = await applyPermissions(guild, backup);
             console.log(
@@ -107,9 +209,12 @@ async function serverLoadBackup(guild, id, onProgress = null, sourceFile = null,
         return {
             ...(result || {}),
             emojis: emojiCount,
-            stickers: stickerCount
+            stickers: stickerCount,
+            rolePermissions: rolePermissionCount
         };
     } finally {
+        restoreOriginalRoleMethods();
+
         try {
             if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
             if (hadOldFile && oldData) fs.writeFileSync(legacyFile, oldData);
