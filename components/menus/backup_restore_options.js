@@ -10,7 +10,8 @@ const LABELS = {
     name: "🏠 Tên server",
     icon: "🖼️ Hình đại diện",
     emojis: "😀 Emoji",
-    stickers: "🏷️ Sticker"
+    stickers: "🏷️ Sticker",
+    botSettings: "⚙️ Cài đặt bot"
 };
 
 const ALLOWED = new Set(Object.keys(LABELS));
@@ -25,42 +26,17 @@ function build(backupId, selectedOptions = []) {
         .setCustomId(`backup_restore_options_${backupId}`)
         .setPlaceholder("⚙️ Chọn dữ liệu muốn khôi phục")
         .setMinValues(1)
-        .setMaxValues(4)
+        .setMaxValues(5)
         .addOptions(
-            {
-                label: "Tên server",
-                value: "name",
-                emoji: "🏠",
-                description: "Khôi phục tên server",
-                default: selected.includes("name")
-            },
-            {
-                label: "Hình đại diện",
-                value: "icon",
-                emoji: "🖼️",
-                description: "Khôi phục avatar server",
-                default: selected.includes("icon")
-            },
-            {
-                label: "Emoji",
-                value: "emojis",
-                emoji: "😀",
-                description: "Khôi phục emoji",
-                default: selected.includes("emojis")
-            },
-            {
-                label: "Sticker",
-                value: "stickers",
-                emoji: "🏷️",
-                description: "Khôi phục sticker",
-                default: selected.includes("stickers")
-            }
+            { label: "Tên server", value: "name", emoji: "🏠", description: "Khôi phục tên server", default: selected.includes("name") },
+            { label: "Hình đại diện", value: "icon", emoji: "🖼️", description: "Khôi phục avatar server", default: selected.includes("icon") },
+            { label: "Emoji", value: "emojis", emoji: "😀", description: "Khôi phục emoji", default: selected.includes("emojis") },
+            { label: "Sticker", value: "stickers", emoji: "🏷️", description: "Khôi phục sticker", default: selected.includes("stickers") },
+            { label: "Cài đặt bot", value: "botSettings", emoji: "⚙️", description: "Khôi phục Auto Backup và thời gian backup", default: selected.includes("botSettings") }
         );
 
     const confirmButton = new ButtonBuilder()
-        .setCustomId(
-            `backup_restore_confirm_${backupId}_${selected.join("-") || "none"}`
-        )
+        .setCustomId(`backup_restore_confirm_${backupId}_${selected.join("-") || "none"}`)
         .setLabel("Xác nhận Restore")
         .setEmoji("✅")
         .setStyle(ButtonStyle.Success)
@@ -78,9 +54,10 @@ function build(backupId, selectedOptions = []) {
                 .setTitle("⚙️ Restore Backup")
                 .setDescription(
                     `🆔 **Backup:** \`${backupId}\`\n\n` +
-                    "🎭 **Role + Channel** luôn được khôi phục.\n\n" +
+                    "🎭 **Role + Channel + quyền** luôn được khôi phục.\n\n" +
                     `📦 **Dữ liệu thêm:** ${selectedText}\n\n` +
-                    "👇 Chọn dữ liệu muốn khôi phục rồi bấm **Xác nhận Restore** ngay bên dưới."
+                    "⚙️ **Cài đặt bot** gồm Auto Backup và khoảng thời gian backup của server.\n\n" +
+                    "👇 Chọn dữ liệu rồi bấm **Xác nhận Restore** ngay bên dưới."
                 )
                 .setFooter({ text: "SkyRush Backup • Chọn và xác nhận trong cùng một giao diện" })
         ],
@@ -96,17 +73,11 @@ module.exports = {
 
     async execute(interaction) {
         if (!interaction.guild) {
-            return interaction.reply({
-                content: "❌ Restore chỉ dùng trong server.",
-                flags: 64
-            });
+            return interaction.reply({ content: "❌ Restore chỉ dùng trong server.", flags: 64 });
         }
 
         const id = interaction.customId.replace("backup_restore_options_", "");
         const options = interaction.values || [];
-
-        // Không chuyển sang một màn hình xác nhận khác.
-        // Menu chọn dữ liệu và nút xác nhận nằm cùng một giao diện.
         return interaction.update(build(id, options));
     }
 };
