@@ -1,48 +1,70 @@
-const { ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
-const fs = require("fs");
+const {
+    ActionRowBuilder,
+    StringSelectMenuBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    EmbedBuilder
+} = require("discord.js");
 
-function build(backupId) {
+const LABELS = {
+    name: "🏠 Tên server",
+    icon: "🖼️ Hình đại diện",
+    emojis: "😀 Emoji",
+    stickers: "🏷️ Sticker"
+};
+
+const ALLOWED = new Set(Object.keys(LABELS));
+
+function build(backupId, selectedOptions = []) {
+    const selected = selectedOptions.filter(value => ALLOWED.has(value));
+    const selectedText = selected.length
+        ? selected.map(value => LABELS[value]).join(", ")
+        : "Chưa chọn";
+
     const menu = new StringSelectMenuBuilder()
         .setCustomId(`backup_restore_options_${backupId}`)
         .setPlaceholder("⚙️ Chọn dữ liệu muốn khôi phục")
         .setMinValues(1)
         .setMaxValues(4)
         .addOptions(
-            { label: "Tên server", value: "name", emoji: "🏠", description: "Khôi phục tên server" },
-            { label: "Hình đại diện", value: "icon", emoji: "🖼️", description: "Khôi phục avatar server" },
-            { label: "Emoji", value: "emojis", emoji: "😀", description: "Khôi phục emoji" },
-            { label: "Sticker", value: "stickers", emoji: "🏷️", description: "Khôi phục sticker" }
+            {
+                label: "Tên server",
+                value: "name",
+                emoji: "🏠",
+                description: "Khôi phục tên server",
+                default: selected.includes("name")
+            },
+            {
+                label: "Hình đại diện",
+                value: "icon",
+                emoji: "🖼️",
+                description: "Khôi phục avatar server",
+                default: selected.includes("icon")
+            },
+            {
+                label: "Emoji",
+                value: "emojis",
+                emoji: "😀",
+                description: "Khôi phục emoji",
+                default: selected.includes("emojis")
+            },
+            {
+                label: "Sticker",
+                value: "stickers",
+                emoji: "🏷️",
+                description: "Khôi phục sticker",
+                default: selected.includes("stickers")
+            }
         );
 
-    return {
-        embeds: [new EmbedBuilder()
-            .setTitle("⚙️ Tùy chọn Restore")
-            .setDescription(
-                `🆔 Backup: \`${backupId}\`\n\n` +
-                "🎭 **Role + Channel** luôn được khôi phục.\n" +
-                "Chọn thêm các phần muốn khôi phục bên dưới.\n\n" +
-                "💡 Có thể chọn nhiều mục cùng lúc.\n" +
-                "⚠️ Sau khi chọn, hãy bấm **Xác nhận Restore** để bắt đầu."
-            )
-            .setFooter({ text: "SkyRush Backup" })],
-        components: [new ActionRowBuilder().addComponents(menu)]
-    };
-}
-
-function buildConfirmation(backupId, options) {
-    const labels = {
-        name: "🏠 Tên server",
-        icon: "🖼️ Hình đại diện",
-        emojis: "😀 Emoji",
-        stickers: "🏷️ Sticker"
-    };
-    const selected = options.map(v => labels[v]).filter(Boolean).join(", ") || "Không có";
-
     const confirmButton = new ButtonBuilder()
-        .setCustomId(`backup_restore_confirm_${backupId}_${options.join("-")}`)
+        .setCustomId(
+            `backup_restore_confirm_${backupId}_${selected.join("-") || "none"}`
+        )
         .setLabel("Xác nhận Restore")
         .setEmoji("✅")
-        .setStyle(ButtonStyle.Success);
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(selected.length === 0);
 
     const cancelButton = new ButtonBuilder()
         .setCustomId(`backup_restore_cancel_${backupId}`)
@@ -51,32 +73,40 @@ function buildConfirmation(backupId, options) {
         .setStyle(ButtonStyle.Danger);
 
     return {
-        embeds: [new EmbedBuilder()
-            .setTitle("⚠️ Xác nhận Restore")
-            .setDescription(
-                `🆔 **Backup:** \`${backupId}\`\n\n` +
-                `📦 **Dữ liệu đã chọn:**\n${selected}\n\n` +
-                "🎭 Role + Channel sẽ **luôn** được khôi phục.\n\n" +
-                "Bạn có chắc muốn bắt đầu restore không?"
-            )
-            .setFooter({ text: "SkyRush Backup • Kiểm tra kỹ trước khi xác nhận" })],
-        components: [new ActionRowBuilder().addComponents(confirmButton, cancelButton)]
+        embeds: [
+            new EmbedBuilder()
+                .setTitle("⚙️ Restore Backup")
+                .setDescription(
+                    `🆔 **Backup:** \`${backupId}\`\n\n` +
+                    "🎭 **Role + Channel** luôn được khôi phục.\n\n" +
+                    `📦 **Dữ liệu thêm:** ${selectedText}\n\n` +
+                    "👇 Chọn dữ liệu muốn khôi phục rồi bấm **Xác nhận Restore** ngay bên dưới."
+                )
+                .setFooter({ text: "SkyRush Backup • Chọn và xác nhận trong cùng một giao diện" })
+        ],
+        components: [
+            new ActionRowBuilder().addComponents(menu),
+            new ActionRowBuilder().addComponents(confirmButton, cancelButton)
+        ]
     };
 }
 
 module.exports = {
     build,
-    buildConfirmation,
 
     async execute(interaction) {
         if (!interaction.guild) {
-            return interaction.reply({ content: "❌ Restore chỉ dùng trong server.", flags: 64 });
+            return interaction.reply({
+                content: "❌ Restore chỉ dùng trong server.",
+                flags: 64
+            });
         }
 
         const id = interaction.customId.replace("backup_restore_options_", "");
         const options = interaction.values || [];
 
-        // Chỉ hiển thị màn hình xác nhận, CHƯA restore.
-        return interaction.update(buildConfirmation(id, options));
+        // Không chuyển sang một màn hình xác nhận khác.
+        // Menu chọn dữ liệu và nút xác nhận nằm cùng một giao diện.
+        return interaction.update(build(id, options));
     }
 };
