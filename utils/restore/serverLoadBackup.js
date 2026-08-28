@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const loadBackup = require("./loadBackup");
+const applyPermissions = require("./applyPermissions");
 const { getBackupFile } = require("../backup/storage");
 
 let restoring = false;
@@ -33,6 +34,20 @@ async function serverLoadBackup(guild, id, onProgress = null, sourceFile = null,
         fs.renameSync(tempFile, legacyFile);
 
         const result = await loadBackup(guild, id, onProgress);
+
+        // QUAN TRỌNG: loadBackup có bước permission cũ, nhưng ở một số
+        // trường hợp role/channel vừa được tạo hoặc vừa được map xong thì
+        // overwrite có thể chưa áp dụng đúng. Chạy thêm một bước SET cuối
+        // cùng sau khi toàn bộ cấu trúc đã tồn tại.
+        try {
+            const permissionResult = await applyPermissions(guild, backup);
+            console.log(
+                `🔐 Final permissions: ${permissionResult.channels} channels, ${permissionResult.overwrites} overwrites`
+            );
+        } catch (error) {
+            console.log(`⚠️ Final permission restore skip: ${error.message}`);
+        }
+
         let emojiCount = 0;
         let stickerCount = 0;
 
