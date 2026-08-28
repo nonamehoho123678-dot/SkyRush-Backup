@@ -89,14 +89,22 @@ client.on("interactionCreate", async interaction => {
     if (!interaction.isChatInputCommand()) {
         if (interaction.isButton()) {
             try {
-                const buttonPath = path.join(__dirname, "components", "buttons", `${interaction.customId}.js`);
+                let buttonFile = `${interaction.customId}.js`;
+                if (interaction.customId.startsWith("backup_restore_confirm_")) buttonFile = "backup_restore_confirm.js";
+                if (interaction.customId.startsWith("backup_restore_cancel_")) buttonFile = "backup_restore_cancel.js";
+
+                const buttonPath = path.join(__dirname, "components", "buttons", buttonFile);
                 if (!fs.existsSync(buttonPath)) return;
                 delete require.cache[require.resolve(buttonPath)];
                 const button = require(buttonPath);
                 if (typeof button.execute === "function") await button.execute(interaction);
             } catch (error) {
                 console.error("❌ BUTTON ERROR:", error);
-                try { if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) await interaction.reply({ content: "❌ Đã xảy ra lỗi khi xử lý nút.", flags: 64 }); } catch {}
+                try {
+                    if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+                        await interaction.reply({ content: "❌ Đã xảy ra lỗi khi xử lý nút.", flags: 64 });
+                    }
+                } catch {}
             }
             return;
         }
@@ -112,7 +120,11 @@ client.on("interactionCreate", async interaction => {
                 if (typeof menu.execute === "function") await menu.execute(interaction);
             } catch (error) {
                 console.error("❌ SELECT MENU ERROR:", error);
-                try { if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) await interaction.reply({ content: "❌ Đã xảy ra lỗi khi xử lý menu.", flags: 64 }); } catch {}
+                try {
+                    if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+                        await interaction.reply({ content: "❌ Đã xảy ra lỗi khi xử lý menu.", flags: 64 });
+                    }
+                } catch {}
             }
             return;
         }
@@ -131,14 +143,20 @@ client.on("interactionCreate", async interaction => {
 
     const command = client.commands.get(interaction.commandName);
     if (!command) {
-        try { if (interaction.replied || interaction.deferred) await interaction.editReply({ content: "❌ Command không tồn tại.", embeds: [], components: [] }); else if (interaction.isRepliable()) await interaction.reply({ content: "❌ Command không tồn tại.", flags: 64 }); } catch {}
+        try {
+            if (interaction.replied || interaction.deferred) await interaction.editReply({ content: "❌ Command không tồn tại.", embeds: [], components: [] });
+            else if (interaction.isRepliable()) await interaction.reply({ content: "❌ Command không tồn tại.", flags: 64 });
+        } catch {}
         return;
     }
 
     try { await command.execute(interaction); }
     catch (error) {
         console.error(`❌ ERROR /${interaction.commandName}`, error);
-        try { if (interaction.replied || interaction.deferred) await interaction.editReply({ content: "❌ Đã xảy ra lỗi khi thực hiện command.", embeds: [], components: [] }); else if (interaction.isRepliable()) await interaction.reply({ content: "❌ Đã xảy ra lỗi khi thực hiện command.", flags: 64 }); } catch {}
+        try {
+            if (interaction.replied || interaction.deferred) await interaction.editReply({ content: "❌ Đã xảy ra lỗi khi thực hiện command.", embeds: [], components: [] });
+            else if (interaction.isRepliable()) await interaction.reply({ content: "❌ Đã xảy ra lỗi khi thực hiện command.", flags: 64 });
+        } catch {}
     }
 });
 
