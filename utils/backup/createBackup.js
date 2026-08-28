@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const generateBackupID = require("./backupID");
+const db = require("../autoBackup/database");
 
 let backupRunning = false;
 
@@ -69,6 +70,22 @@ function getStickerData(sticker) {
     };
 }
 
+function getGuildBotSettings(guildId) {
+    return new Promise(resolve => {
+        db.get(
+            "SELECT guildId, enabled, interval FROM settings WHERE guildId = ?",
+            [guildId],
+            (error, row) => {
+                if (error) {
+                    console.log("⚠️ Không đọc được bot settings:", error.message);
+                    return resolve(null);
+                }
+                resolve(row || { guildId, enabled: 0, interval: 60 });
+            }
+        );
+    });
+}
+
 async function performBackup(guild, creatorId = null) {
     if (!guild) throw new Error("Guild không tồn tại.");
 
@@ -84,10 +101,11 @@ async function performBackup(guild, creatorId = null) {
     const channels = guild.channels.cache.sort((a, b) => (a.rawPosition ?? a.position ?? 0) - (b.rawPosition ?? b.position ?? 0)).map(getChannelData);
     const emojis = guild.emojis.cache.map(getEmojiData);
     const stickers = guild.stickers.cache.map(getStickerData);
+    const botSettings = await getGuildBotSettings(guild.id);
 
     const backup = {
         id: backupID,
-        version: "3.1.0",
+        version: "3.2.0",
         createdBy: creatorId || null,
         guild: {
             id: guild.id,
@@ -99,8 +117,11 @@ async function performBackup(guild, creatorId = null) {
             explicitContentFilter: guild.explicitContentFilter
         },
         createdAt: new Date().toISOString(),
-        roles: serialize(roles), channels: serialize(channels),
-        emojis: serialize(emojis), stickers: serialize(stickers)
+        botSettings: botSettings ? serialize(botSettings) : null,
+        roles: serialize(roles),
+        channels: serialize(channels),
+        emojis: serialize(emojis),
+        stickers: serialize(stickers)
     };
 
     fs.writeFileSync(backupFile, JSON.stringify(backup, null, 4), { encoding: "utf8", flag: "wx" });
