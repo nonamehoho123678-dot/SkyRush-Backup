@@ -1,3 +1,4 @@
+const log = () => {};
 const fs = require("fs");
 const path = require("path");
 const { ChannelType } = require("discord.js");
@@ -10,11 +11,11 @@ async function loadBackup(guild, id, onProgress = null) {
                 return await fn();
             } catch (error) {
                 lastError = error;
-                console.log(`⚠️ ${label} lỗi lần ${attempt}/5: ${error.message}`);
+                log(`⚠️ ${label} lỗi lần ${attempt}/5: ${error.message}`);
                 if (attempt < 5) await sleep(500);
             }
         }
-        console.log(`❌ ${label} thất bại sau 5 lần. Bỏ qua.`);
+        log(`❌ ${label} thất bại sau 5 lần. Bỏ qua.`);
         return null;
     }
 
@@ -65,7 +66,6 @@ async function loadBackup(guild, id, onProgress = null) {
         const barLength = 30;
         const filled = Math.floor(percent / 100 * barLength);
         const bar = "█".repeat(filled) + "░".repeat(barLength - filled);
-        process.stdout.write(`\r[${bar}] ${percent}% | Roles ${roleCount}/${roles.length} | Categories ${categoryCount}/${categories.length} | Channels ${channelCount}/${normalChannels.length} | Emojis ${emojiCount}/${emojis.length}`);
 
         if (typeof onProgress === "function") {
             try {
@@ -81,14 +81,14 @@ async function loadBackup(guild, id, onProgress = null) {
                     totalEmojis: emojis.length
                 });
             } catch (error) {
-                console.log(`\n⚠️ Discord progress skip: ${error.message}`);
+                log(`\n⚠️ Discord progress skip: ${error.message}`);
             }
         }
     }
 
-    console.log("\n================================");
-    console.log(`🔄 Restore: ${id}`);
-    console.log("================================");
+    log("\n================================");
+    log(`🔄 Restore: ${id}`);
+    log("================================");
 
     await retry(() => guild.roles.fetch(), "Fetch roles");
     await retry(() => guild.channels.fetch(), "Fetch channels");
@@ -97,7 +97,7 @@ async function loadBackup(guild, id, onProgress = null) {
     // =====================================================
     // 1️⃣ ROLES
     // =====================================================
-    console.log("\n1️⃣ Restore roles...");
+    log("\n1️⃣ Restore roles...");
 
     for (const roleData of roles) {
         roleCount++;
@@ -117,10 +117,10 @@ async function loadBackup(guild, id, onProgress = null) {
             }
 
             if (existingRole) {
-                console.log(`↔️ Role đã tồn tại: ${roleData.name}`);
+                log(`↔️ Role đã tồn tại: ${roleData.name}`);
                 roleMap[roleData.id] = existingRole.id;
             } else {
-                console.log(`➕ Tạo role: ${roleData.name}`);
+                log(`➕ Tạo role: ${roleData.name}`);
                 const newRole = await retry(() => guild.roles.create({
                     name: roleData.name,
                     colors: { primaryColor: Number(roleData.color || 0) },
@@ -138,7 +138,7 @@ async function loadBackup(guild, id, onProgress = null) {
                 }
             }
         } catch (error) {
-            console.log(`❌ Role lỗi: ${roleData.name} | ${error.message}`);
+            log(`❌ Role lỗi: ${roleData.name} | ${error.message}`);
         }
         completed++;
         await progress();
@@ -147,7 +147,7 @@ async function loadBackup(guild, id, onProgress = null) {
     // =====================================================
     // 2️⃣ ROLE PERMISSIONS
     // =====================================================
-    console.log("\n\n2️⃣ Restore role permissions...");
+    log("\n\n2️⃣ Restore role permissions...");
 
     for (const roleData of roles) {
         if (roleData.name === "@everyone" || roleData.name === "SkyRush Backup") continue;
@@ -158,7 +158,7 @@ async function loadBackup(guild, id, onProgress = null) {
 
         // Discord không cho bot chỉnh role cao hơn hoặc ngang role cao nhất của bot.
         if (!role.editable) {
-            console.log(`⚠️ Bỏ qua permission role ${role.name}: role không editable / nằm trên bot.`);
+            log(`⚠️ Bỏ qua permission role ${role.name}: role không editable / nằm trên bot.`);
             continue;
         }
 
@@ -167,13 +167,13 @@ async function loadBackup(guild, id, onProgress = null) {
             () => role.setPermissions(permissions),
             `Set role permission ${role.name}`
         );
-        if (ok) console.log(`🔐 Role permission SET OK: ${role.name}`);
+        if (ok) log(`🔐 Role permission SET OK: ${role.name}`);
     }
 
     // =====================================================
     // 3️⃣ CATEGORIES
     // =====================================================
-    console.log("\n3️⃣ Restore categories...");
+    log("\n3️⃣ Restore categories...");
 
     for (const category of categories) {
         categoryCount++;
@@ -183,13 +183,13 @@ async function loadBackup(guild, id, onProgress = null) {
             );
 
             if (!existing) {
-                console.log(`➕ Tạo category: ${category.name}`);
+                log(`➕ Tạo category: ${category.name}`);
                 existing = await retry(
                     () => guild.channels.create({ name: category.name, type: ChannelType.GuildCategory }),
                     `Create category ${category.name}`
                 );
             } else {
-                console.log(`↔️ Category đã tồn tại: ${category.name}`);
+                log(`↔️ Category đã tồn tại: ${category.name}`);
             }
 
             if (existing) {
@@ -197,7 +197,7 @@ async function loadBackup(guild, id, onProgress = null) {
                 await restorePermissions(existing, category.permissionOverwrites, guild, roleMap, retry);
             }
         } catch (error) {
-            console.log(`❌ Category lỗi: ${category.name} | ${error.message}`);
+            log(`❌ Category lỗi: ${category.name} | ${error.message}`);
         }
         completed++;
         await progress();
@@ -206,7 +206,7 @@ async function loadBackup(guild, id, onProgress = null) {
     // =====================================================
     // 4️⃣ CHANNELS
     // =====================================================
-    console.log("\n4️⃣ Restore channels...");
+    log("\n4️⃣ Restore channels...");
 
     for (const channel of normalChannels) {
         channelCount++;
@@ -220,7 +220,7 @@ async function loadBackup(guild, id, onProgress = null) {
             );
 
             if (!existingChannel) {
-                console.log(`➕ Tạo channel: ${channel.name}`);
+                log(`➕ Tạo channel: ${channel.name}`);
                 let type = Number(channel.type);
                 if (type === ChannelType.GuildForum || type === ChannelType.GuildMedia) type = ChannelType.GuildText;
 
@@ -249,7 +249,7 @@ async function loadBackup(guild, id, onProgress = null) {
                     `Create channel ${channel.name}`
                 );
             } else {
-                console.log(`↔️ Channel đã tồn tại: ${channel.name}`);
+                log(`↔️ Channel đã tồn tại: ${channel.name}`);
                 if (parentId !== undefined && existingChannel.parentId !== parentId) {
                     await retry(() => existingChannel.setParent(parentId), `Set parent ${channel.name}`);
                 }
@@ -260,7 +260,7 @@ async function loadBackup(guild, id, onProgress = null) {
                 await restorePermissions(existingChannel, channel.permissionOverwrites, guild, roleMap, retry);
             }
         } catch (error) {
-            console.log(`❌ Channel lỗi: ${channel.name} | ${error.message}`);
+            log(`❌ Channel lỗi: ${channel.name} | ${error.message}`);
         }
         completed++;
         await progress();
@@ -269,7 +269,7 @@ async function loadBackup(guild, id, onProgress = null) {
     // =====================================================
     // 5️⃣ ROLE POSITIONS
     // =====================================================
-    console.log("\n5️⃣ Restore role positions...");
+    log("\n5️⃣ Restore role positions...");
 
     const botMember = guild.members.me || await retry(() => guild.members.fetchMe(), "Fetch bot member");
     const botRole = botMember?.roles?.highest;
@@ -283,7 +283,7 @@ async function loadBackup(guild, id, onProgress = null) {
         const role = guild.roles.cache.get(newId);
         if (!role || !role.editable) continue;
         if (botRole && role.position >= botRole.position) {
-            console.log(`⚠️ Bỏ qua vị trí role ${role.name}: nằm ngang/trên role bot.`);
+            log(`⚠️ Bỏ qua vị trí role ${role.name}: nằm ngang/trên role bot.`);
             continue;
         }
 
@@ -301,23 +301,23 @@ async function loadBackup(guild, id, onProgress = null) {
     // =====================================================
     // 6️⃣ EMOJIS
     // =====================================================
-    console.log("\n6️⃣ Restore emojis...");
+    log("\n6️⃣ Restore emojis...");
 
     for (const emoji of emojis) {
         emojiCount++;
         try {
             const existing = guild.emojis.cache.find(e => e.name === emoji.name);
             if (existing) {
-                console.log(`↔️ Emoji đã tồn tại: ${emoji.name}`);
+                log(`↔️ Emoji đã tồn tại: ${emoji.name}`);
             } else {
                 const created = await retry(
                     () => guild.emojis.create({ attachment: emoji.url, name: emoji.name }),
                     `Create emoji ${emoji.name}`
                 );
-                if (created) console.log(`➕ Tạo emoji: ${emoji.name}`);
+                if (created) log(`➕ Tạo emoji: ${emoji.name}`);
             }
         } catch (error) {
-            console.log(`⚠️ Emoji skip: ${emoji.name} | ${error.message}`);
+            log(`⚠️ Emoji skip: ${emoji.name} | ${error.message}`);
         }
         completed++;
         await progress();
@@ -333,7 +333,6 @@ async function loadBackup(guild, id, onProgress = null) {
     emojiCount = emojis.length;
 
     const finalBar = "█".repeat(30);
-    process.stdout.write(`\r[${finalBar}] 100% | Roles ${roleCount}/${roles.length} | Categories ${categoryCount}/${categories.length} | Channels ${channelCount}/${normalChannels.length} | Emojis ${emojiCount}/${emojis.length}\n`);
 
     if (typeof onProgress === "function") {
         try {
@@ -351,9 +350,9 @@ async function loadBackup(guild, id, onProgress = null) {
         } catch {}
     }
 
-    console.log("\n================================");
-    console.log("✅ RESTORE HOÀN TẤT!");
-    console.log("================================");
+    log("\n================================");
+    log("✅ RESTORE HOÀN TẤT!");
+    log("================================");
 
     return { success: true, id, roles: roleCount, categories: categoryCount, channels: channelCount, emojis: emojiCount };
 }
@@ -361,7 +360,7 @@ async function loadBackup(guild, id, onProgress = null) {
 async function restorePermissions(channel, permissionOverwrites, guild, roleMap, retry) {
     if (!channel || !Array.isArray(permissionOverwrites)) return;
 
-    console.log(`🔐 Restore permissions: ${channel.name}`);
+    log(`🔐 Restore permissions: ${channel.name}`);
 
     for (const perm of permissionOverwrites) {
         try {
@@ -378,16 +377,16 @@ async function restorePermissions(channel, permissionOverwrites, guild, roleMap,
                 const member = guild.members.cache.get(perm.id);
                 if (member) targetId = member.id;
                 else {
-                    console.log(`⚠️ User permission skip: ${perm.id}`);
+                    log(`⚠️ User permission skip: ${perm.id}`);
                     continue;
                 }
             } else {
-                console.log(`⚠️ Permission type không hỗ trợ: ${perm.type}`);
+                log(`⚠️ Permission type không hỗ trợ: ${perm.type}`);
                 continue;
             }
 
             if (!targetId) {
-                console.log(`⚠️ Không tìm được target permission: ${perm.id}`);
+                log(`⚠️ Không tìm được target permission: ${perm.id}`);
                 continue;
             }
 
@@ -395,9 +394,9 @@ async function restorePermissions(channel, permissionOverwrites, guild, roleMap,
             const deny = BigInt(perm.deny || "0");
             const result = await retryPermission(channel, targetId, allow, deny);
 
-            if (result) console.log(`🔐 Permission OK: ${perm.name || targetId}`);
+            if (result) log(`🔐 Permission OK: ${perm.name || targetId}`);
         } catch (error) {
-            console.log(`⚠️ Permission skip: ${perm.name || perm.id} | ${error.message}`);
+            log(`⚠️ Permission skip: ${perm.name || perm.id} | ${error.message}`);
         }
     }
 }
@@ -408,11 +407,11 @@ async function retryPermission(channel, targetId, allow, deny) {
             await channel.permissionOverwrites.edit(targetId, { allow, deny });
             return true;
         } catch (error) {
-            console.log(`⚠️ Permission lỗi ${attempt}/5: ${error.message}`);
+            log(`⚠️ Permission lỗi ${attempt}/5: ${error.message}`);
             if (attempt < 5) await new Promise(resolve => setTimeout(resolve, 500));
         }
     }
-    console.log("❌ Permission thất bại sau 5 lần. Bỏ qua.");
+    log("❌ Permission thất bại sau 5 lần. Bỏ qua.");
     return false;
 }
 
