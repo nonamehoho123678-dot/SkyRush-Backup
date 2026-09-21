@@ -1,3 +1,4 @@
+const log = () => {};
 const fs = require("fs");
 const path = require("path");
 const loadBackup = require("./loadBackup");
@@ -14,14 +15,14 @@ async function retry(fn, label = "Operation") {
             return await fn();
         } catch (error) {
             lastError = error;
-            console.log(`⚠️ ${label} lỗi lần ${attempt}/5: ${error.message}`);
+            log(`⚠️ ${label} lỗi lần ${attempt}/5: ${error.message}`);
             if (attempt < 5) {
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
         }
     }
 
-    console.log(`❌ ${label} thất bại sau 5 lần. Bỏ qua.`);
+    log(`❌ ${label} thất bại sau 5 lần. Bỏ qua.`);
     return null;
 }
 
@@ -48,7 +49,7 @@ async function restoreRolePermissions(guild, backup) {
 
         if (result) {
             applied++;
-            console.log(`🔐 Role permission SET OK: ${role.name}`);
+            log(`🔐 Role permission SET OK: ${role.name}`);
         }
     }
 
@@ -123,7 +124,7 @@ async function serverLoadBackup(guild, id, onProgress = null, sourceFile = null,
         try {
             await onProgress(data);
         } catch (error) {
-            console.log(`⚠️ Discord progress skip: ${error.message}`);
+            log(`⚠️ Discord progress skip: ${error.message}`);
         }
     };
 
@@ -286,7 +287,7 @@ async function serverLoadBackup(guild, id, onProgress = null, sourceFile = null,
             if (hadOldFile && oldData) fs.writeFileSync(legacyFile, oldData);
             else if (fs.existsSync(legacyFile)) fs.unlinkSync(legacyFile);
         } catch (cleanupError) {
-            console.log("⚠️ Restore cleanup warning:", cleanupError.message);
+            log("⚠️ Restore cleanup warning:", cleanupError.message);
         }
 
         restoring = false;
