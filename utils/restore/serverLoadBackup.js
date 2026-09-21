@@ -5,7 +5,7 @@ const loadBackup = require("./loadBackup");
 const applyPermissions = require("./applyPermissions");
 const { getBackupFile } = require("../backup/storage");
 
-let restoring = false;
+const restoringGuilds = new Set();
 
 async function retry(fn, label = "Operation") {
     let lastError = null;
@@ -76,9 +76,11 @@ async function serverLoadBackup(guild, id, onProgress = null, sourceFile = null,
 
     const source = sourceFile || getBackupFile(guild, id);
     if (!fs.existsSync(source)) throw new Error(`Backup ${id} không tồn tại.`);
-    if (restoring) throw new Error("Đang có một restore khác đang chạy. Vui lòng chờ.");
+    if (restoringGuilds.has(guild.id)) throw new Error("Server này đang có một restore khác đang chạy. Vui lòng chờ.");
 
-    restoring = true;
+    // Mỗi server có một trạng thái restore riêng, vì vậy nhiều server
+    // có thể restore đồng thời mà không khóa lẫn nhau.
+    restoringGuilds.add(guild.id);
     const legacyRoot = path.join(__dirname, "..", "..", "backups");
     const legacyFile = path.join(legacyRoot, `${id}.json`);
     const tempFile = path.join(legacyRoot, `.restore-${guild.id}-${id}.json`);
@@ -290,9 +292,9 @@ async function serverLoadBackup(guild, id, onProgress = null, sourceFile = null,
             log("⚠️ Restore cleanup warning:", cleanupError.message);
         }
 
-        restoring = false;
+        restoringGuilds.delete(guild.id);
     }
 }
 
-serverLoadBackup.isRunning = () => restoring;
+serverLoadBackup.isRunning = guildId => guildId ? restoringGuilds.has(guildId) : restoringGuilds.size > 0;
 module.exports = serverLoadBackup;
