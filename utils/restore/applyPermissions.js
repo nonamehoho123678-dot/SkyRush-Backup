@@ -1,3 +1,4 @@
+const log = () => {};
 const { ChannelType } = require("discord.js");
 
 async function retry(fn, label = "Operation") {
@@ -5,14 +6,14 @@ async function retry(fn, label = "Operation") {
         try {
             return await fn();
         } catch (error) {
-            console.log(`⚠️ ${label} lỗi lần ${attempt}/5: ${error.message}`);
+            log(`⚠️ ${label} lỗi lần ${attempt}/5: ${error.message}`);
             if (attempt < 5) {
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
         }
     }
 
-    console.log(`❌ ${label} thất bại sau 5 lần. Bỏ qua.`);
+    log(`❌ ${label} thất bại sau 5 lần. Bỏ qua.`);
     return null;
 }
 
@@ -70,7 +71,7 @@ async function applyPermissions(guild, backup) {
         const currentId = channelMap.get(data.id);
         const channel = currentId ? guild.channels.cache.get(currentId) : null;
         if (!channel) {
-            console.log(`⚠️ Không tìm thấy channel để set permission: ${data.name}`);
+            log(`⚠️ Không tìm thấy channel để set permission: ${data.name}`);
             continue;
         }
 
@@ -87,7 +88,7 @@ async function applyPermissions(guild, backup) {
             }
 
             if (!targetId) {
-                console.log(`⚠️ Bỏ qua permission ${permission.id} trong ${data.name}: không map được target.`);
+                log(`⚠️ Bỏ qua permission ${permission.id} trong ${data.name}: không map được target.`);
                 continue;
             }
 
@@ -112,7 +113,7 @@ async function applyPermissions(guild, backup) {
         if (result) {
             channelsApplied++;
             overwritesApplied += overwrites.length;
-            console.log(`🔐 Permission SET OK: ${data.name} (${overwrites.length})`);
+            log(`🔐 Permission SET OK: ${data.name} (${overwrites.length})`);
         }
     }
 
