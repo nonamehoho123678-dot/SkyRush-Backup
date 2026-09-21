@@ -38,6 +38,6 @@ module.exports = {
             new ButtonBuilder().setCustomId("backup_delete").setLabel("Delete Backup").setEmoji("🗑️").setStyle(ButtonStyle.Danger)
         );
 
-        return interaction.reply({ embeds: [embed], components: [row] });
+        return interaction.reply({ embeds: [embed], components: [row], flags: 64 });
     }
 };
