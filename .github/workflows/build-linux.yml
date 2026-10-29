@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repository
@@ -24,21 +24,23 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.20.2'
+          cache: npm
 
-      - name: Update npm
-        run: npm install --global npm@latest
+      - name: Show Node and npm versions
+        run: |
+          node --version
+          npm --version
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Approve SQLite install script
-        run: npm approve-scripts sqlite3
 
       - name: Rebuild SQLite for Linux
         run: npm rebuild sqlite3
 
       - name: Verify dependencies
-        run: node -e "require('discord.js'); require('sqlite3'); console.log('Dependencies OK')"
+        run: |
+          node -e "require('discord.js'); console.log('discord.js OK')"
+          node -e "require('sqlite3'); console.log('sqlite3 OK')"
 
       - name: Upload Linux node_modules
         uses: actions/upload-artifact@v4
