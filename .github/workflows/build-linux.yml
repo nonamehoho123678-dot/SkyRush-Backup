@@ -1,0 +1,49 @@
+
+name: Build Linux Dependencies
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/build-linux.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.20.2'
+
+      - name: Update npm
+        run: npm install --global npm@latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Approve SQLite install script
+        run: npm approve-scripts sqlite3
+
+      - name: Rebuild SQLite for Linux
+        run: npm rebuild sqlite3
+
+      - name: Verify dependencies
+        run: node -e "require('discord.js'); require('sqlite3'); console.log('Dependencies OK')"
+
+      - name: Upload Linux node_modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: node_modules-linux-node20
+          path: node_modules/
+          if-no-files-found: error
+          retention-days: 3
