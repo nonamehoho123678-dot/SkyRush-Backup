@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - package.json
-      - package-lock.json
-      - .github/workflows/build-linux.yml
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/build-linux.yml'
 
 permissions:
   contents: read
@@ -20,32 +20,38 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20.20.2'
           cache: npm
 
-      - name: Show Node and npm versions
+      - name: Show environment
         run: |
           node --version
           npm --version
+          uname -a
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Rebuild SQLite for Linux
-        run: npm rebuild sqlite3
+      - name: Build SQLite
+        run: npm rebuild sqlite3 --build-from-source
 
       - name: Verify dependencies
         run: |
-          node -e "require('discord.js'); console.log('discord.js OK')"
-          node -e "require('sqlite3'); console.log('sqlite3 OK')"
+          node -e "require('discord.js'); console.log('DISCORD.JS OK')"
+          node -e "require('sqlite3'); console.log('SQLITE3 OK')"
 
-      - name: Upload Linux node_modules
+      - name: Check SQLite binary
+        run: |
+          find node_modules/sqlite3 -name '*.node' -print
+          test -n "$(find node_modules/sqlite3 -name '*.node' -print -quit)"
+
+      - name: Upload Linux dependencies
         uses: actions/upload-artifact@v4
         with:
-          name: node_modules-linux-node20
+          name: skyrush-node-modules-linux-node20
           path: node_modules/
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 7
